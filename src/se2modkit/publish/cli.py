@@ -11,15 +11,15 @@ import os
 import sys
 from pathlib import Path
 
+from .. import progress
 from ..env.config import ConfigError
 from ..env.core import EnvError, SE2Env, discover_env
 from ..release import publish_check
-from . import __version__, gitutil, limits
+from . import __version__, gitutil, limits, release
 from .hostenv import GAME_APP_ID, build_env, find_libsteam_api, hub_bundles
 from .project import Refusal, check_canonical, load_config, read_ledger, read_tracked, select_mod
 from .publish import assemble, execute, preflight_live, render_plan
 from .stage import Limits, StageResult, check_tree, collect_head_scripts, stage
-from . import progress, release
 
 
 def discover() -> SE2Env:

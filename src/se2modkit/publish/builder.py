@@ -24,7 +24,7 @@ from pathlib import Path
 
 from .hostenv import TEXCONV, BuildEnv, find_processes
 from .project import Refusal
-from . import progress
+from .. import progress
 
 
 def win_path(p: Path) -> str:

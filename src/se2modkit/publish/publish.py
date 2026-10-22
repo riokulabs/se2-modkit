@@ -20,7 +20,7 @@ from .project import (ModProject, PublishConfig, Refusal, append_ledger, differs
                       ledger_item_ids, read_ledger, read_tracked, repo_rel, split_release_tag, write_mod_id)
 from .stage import StageResult, dirty_shipping_inputs
 from .steam import NEW_ITEM, Backend, DryRunBackend, plan_update
-from . import progress
+from .. import progress
 
 PLACEHOLDER_STEAM_ID = 0
 

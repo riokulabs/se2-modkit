@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .metadata import KV_TAG_KEY, STEAM_VISIBILITY
-from . import progress
+from .. import progress
 
 NEW_ITEM = 0   # placeholder id in a dry run before CreateItem
 
