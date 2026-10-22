@@ -373,7 +373,17 @@ def spawn_runner(root: Path) -> subprocess.Popen:
         kw["start_new_session"] = True
     with open(log, "a", encoding="utf-8", newline="\n") as sink:
         return subprocess.Popen(runner_command(root), stdin=subprocess.DEVNULL, stdout=sink, stderr=subprocess.STDOUT,
-                                close_fds=True, **kw)
+                                close_fds=True, env=runner_env(), **kw)
+
+
+def runner_env(base: dict | None = None) -> dict:
+    """The caller's environment, with se2modkit's own location first on PYTHONPATH. The caller may have found
+    se2modkit through a path it added at run time (a wrapper script), which a fresh interpreter wouldn't see."""
+    env = dict(os.environ if base is None else base)
+    pkg_parent = str(Path(__file__).resolve().parent.parent)
+    parts = [pkg_parent] + [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and p != pkg_parent]
+    env["PYTHONPATH"] = os.pathsep.join(parts)
+    return env
 
 
 def ensure_runner(store: Store, spawn: Callable[[Path], object] | None = None) -> bool:

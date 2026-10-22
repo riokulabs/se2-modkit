@@ -6,6 +6,7 @@ Every job here is a short Python command; GPUs come from a fake sampler. Nothing
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -408,3 +409,20 @@ def test_submit_starts_one_detached_runner_that_exits_when_idle(tmp_path):
             while store.runner_alive() and time.monotonic() < deadline:
                 time.sleep(0.1)
 
+
+
+def test_runner_env_lets_a_fresh_interpreter_import_se2modkit(tmp_path):
+    """A runner spawned from a wrapper that put se2modkit on sys.path at run time must still find it: with site
+    packages disabled (-S), only the PYTHONPATH from runner_env can supply the package."""
+    import subprocess
+    import sys
+
+    from se2modkit import jobqueue
+
+    env = jobqueue.runner_env({"PATH": "/usr/bin:/bin", "PYTHONPATH": "/somewhere/else"})
+    first, *rest = env["PYTHONPATH"].split(os.pathsep)
+    assert first == str(Path(jobqueue.__file__).resolve().parent.parent)  # se2modkit's own location comes first
+    assert "/somewhere/else" in rest
+    out = subprocess.run([sys.executable, "-S", "-c", "import se2modkit, sys; print('ok')"], env=env, cwd=tmp_path,
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0 and out.stdout.strip() == "ok", out.stderr
