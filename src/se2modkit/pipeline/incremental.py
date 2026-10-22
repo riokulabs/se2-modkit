@@ -1689,7 +1689,7 @@ def _alive(pid: int) -> bool:
     if pid <= 0:
         return False
     if os.name == "nt":
-        return True   # cannot tell cheaply: a lock is taken over only when removed
+        return _alive_windows(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -1697,6 +1697,23 @@ def _alive(pid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+def _alive_windows(pid: int) -> bool:
+    """Whether a Windows process is still running (os.kill(pid, 0) would terminate it there)."""
+    import ctypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenProcess.restype = ctypes.c_void_p
+    k32.GetExitCodeProcess.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
+    k32.CloseHandle.argtypes = (ctypes.c_void_p,)
+    h = k32.OpenProcess(0x1000, False, pid)      # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return ctypes.get_last_error() == 5     # ERROR_ACCESS_DENIED: it exists; anything else: it is gone
+    try:
+        code = ctypes.c_ulong()
+        return not k32.GetExitCodeProcess(h, ctypes.byref(code)) or code.value == 259   # STILL_ACTIVE
+    finally:
+        k32.CloseHandle(h)
 
 
 @contextlib.contextmanager
