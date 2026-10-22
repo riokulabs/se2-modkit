@@ -93,8 +93,16 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["publish"] and len(argv) > 1:  # its own argument parser and safety gates (`se2publish`)
         from .publish_cmd import run
         return run(argv[1:])
+    tail = None
+    if argv[:1] == ["queue"] and "--" in argv:   # the queued command is taken verbatim, its own "--" included
+        cut = argv.index("--")
+        argv, tail = argv[:cut], argv[cut + 1:]
     parser = _parser()
     args, extra = parser.parse_known_args(argv)
+    if tail is not None:
+        if not isinstance(getattr(args, "script_args", None), list):
+            parser.error("only `queue submit` takes a command after --")
+        args.script_args = [*args.script_args, *tail]
     if extra and extra[0] == "--" and isinstance(getattr(args, "script_args", None), list):
         # Python 3.11's argparse leaves what follows "--" unparsed once an option came before it
         args.script_args = [*args.script_args, *extra[1:]]

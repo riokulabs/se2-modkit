@@ -26,6 +26,13 @@ def test_submit_prints_the_id_and_starts_the_runner(run, q):
     assert (job.name, job.load, job.gpu_req, job.timeout, job.env["A"]) == ("turntable", 0.25, 1, 30.0, "b")
 
 
+def test_the_queued_command_keeps_its_own_double_dash(run, q):
+    qdir, _ = q
+    cmd = ["blender", "-b", "--python", "build.py", "--", "all", "--no-render", "--gpu-device", "{gpu}"]
+    assert run("queue", "--queue-dir", str(qdir), "submit", "--load", "heavy", "--", *cmd)[0] == 0
+    assert Q.Store(qdir).load(1).argv == cmd
+
+
 def test_submit_rejects_bad_values(run, q):
     qdir, _ = q
     for bad in (["--load", "huge"], ["--gpu", "best"], ["--timeout", "0"], ["--env", "NOEQUALS"]):

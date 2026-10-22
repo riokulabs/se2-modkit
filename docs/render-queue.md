@@ -33,7 +33,8 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 | `--timeout SECONDS` | Stop the job after this long; `wait` then exits 124 |
 | `--env K=V` | Extra environment variable for the job (repeatable) |
 
-In the command, `{gpu}` is replaced with the chosen Vulkan device index, which is also exported as
+Everything after the first `--` is the command, taken verbatim (a `--` of its own, as in
+`blender -b --python build.py -- all`, stays part of it). In the command, `{gpu}` is replaced with the chosen Vulkan device index, which is also exported as
 `SE2_GPU_DEVICE`. With no GPU choice both are `0`. Every command also takes `--queue-dir DIR` before the subcommand
 (default `<cache>/queue`, see [install.md](install.md) for the cache folder).
 
