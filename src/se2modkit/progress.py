@@ -1,4 +1,4 @@
-"""Progress lines for long publish steps, on stderr so the printed plan on stdout stays unchanged.
+"""Progress lines for long steps (publishing, queued jobs), on stderr so the output on stdout stays unchanged.
 
     [20:48:11 +125s] > SDK builder: prepare for publish
     [20:48:26 +140s]   ... still running (15s); log: <latest builder log line>

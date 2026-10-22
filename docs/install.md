@@ -91,6 +91,7 @@ cache (type facts, standin tree, baselines) lives under `$XDG_CACHE_HOME/se2modk
 | `vanilla_ref` | read-only folder of vanilla model references for previews and the spark/stage analysis | none |
 | `workspace_mods` | folders where a bare mod name is looked up | `SE2_WORKSPACE` (its `mods` folder) |
 | `mcp_cfg` | config file of the in-game bridge plugin (`se2diag`) | `SE2_MCP_CFG` (URL: `SE2_MCP_URL`) |
+| `[queue]` | budget and runner settings of `se2mod queue` ([render-queue.md](render-queue.md)) | none |
 
 Other variables: `SE2_PROCESS_NAME` (extra process name counted as "the game is running"), `SE2_LIBSTEAM_API`
 (Steamworks library for `publish`), `SE2MODKIT_SDK_BUILD=1` (opt in to the real SDK build tests),

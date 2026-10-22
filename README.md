@@ -45,6 +45,7 @@ Three console scripts: `se2mod` (everything below), `se2publish` (the Workshop p
 | Mods | `se2mod new`, `se2mod list`, `se2mod build`, `se2mod test`, `se2mod snapshot`, `se2mod style`, `se2mod report` |
 | Running the game | `se2mod play`, `se2mod off`, `se2mod on` |
 | Blender and previews | `se2mod blender`, `se2mod build-models`, `se2mod check`, `se2mod preview`, `se2mod sheet`, `se2mod pair`, `se2mod kit` |
+| GPU jobs | `se2mod queue` (run renders and exports within a power budget), `se2mod gpu pick` |
 | Definitions | `se2mod defs`, `se2mod chain`, `se2mod show`, `se2mod copy`, `se2mod override`, `se2mod clone-block` |
 | Game updates | `se2mod deps`, `se2mod facts` |
 | Publishing | `se2mod publish` |
@@ -60,6 +61,7 @@ Three console scripts: `se2mod` (everything below), `se2publish` (the Workshop p
 | [docs/windows.md](docs/windows.md) | What is expected to work, what is untested, the manual checklist |
 | [docs/when-the-game-updates.md](docs/when-the-game-updates.md) | `se2mod deps`, baselines, `compat.toml`, gates, type facts |
 | [docs/multi-mod-repos.md](docs/multi-mod-repos.md) | Several mods in one repo, the MOD argument, CI matrix |
+| [docs/render-queue.md](docs/render-queue.md) | Job queue for Blender renders and exports, the power budget, GPU picking |
 | [docs/incremental-builds.md](docs/incremental-builds.md) | What an incremental model build tracks and what to declare |
 | [docs/publish.md](docs/publish.md) | Steam Workshop publisher; read its risk note before a real upload |
 | [docs/diag.md](docs/diag.md) | Diagnostics toolkit |

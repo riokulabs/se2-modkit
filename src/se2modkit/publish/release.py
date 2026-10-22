@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import progress
+from .. import progress
 from .changelog import find_section
 from .project import ModProject, PublishConfig, read_tracked, split_release_tag
 
