@@ -103,7 +103,7 @@ class Index:
 
     def rel(self, p):
         try:
-            return str(Path(p).relative_to(self.root))
+            return Path(p).relative_to(self.root).as_posix()
         except ValueError:
             return str(p)
 
