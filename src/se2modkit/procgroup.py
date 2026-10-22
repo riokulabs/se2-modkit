@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-__all__ = ["GRACE_SECONDS", "Job", "Result", "run_all"]
+__all__ = ["GRACE_SECONDS", "Job", "Result", "exited", "reap", "run_all", "signal_group", "start", "stop"]
 
 GRACE_SECONDS = 5.0
 _POLL = 0.1
@@ -108,6 +108,33 @@ def stop(proc: subprocess.Popen, grace: float = GRACE_SECONDS) -> None:
         if not _exited(proc):
             _signal(proc, None if os.name == "nt" else signal.SIGKILL)
     _reap(proc)
+
+
+def start(job: Job) -> subprocess.Popen:
+    """Start one job in its own process group, output into its log (for callers that schedule jobs themselves)."""
+    return _start(job)
+
+
+def exited(proc: subprocess.Popen) -> bool:
+    """Whether the job's leader exited; it stays unreaped until `reap`, so its group id is not reused before then."""
+    return _exited(proc)
+
+
+def reap(proc: subprocess.Popen) -> int:
+    """Kill what is left of the job's group and reap the leader; returns its exit code."""
+    return _reap(proc)
+
+
+def signal_group(proc: subprocess.Popen, sig) -> None:
+    """Signal the job's whole group while the leader is unreaped. `terminate` maps to SIGTERM (Windows:
+    CTRL_BREAK_EVENT), `kill` to SIGKILL (Windows: kill())."""
+    if not _exited(proc):
+        if sig == "terminate":
+            _signal(proc, signal.CTRL_BREAK_EVENT if os.name == "nt" else signal.SIGTERM)
+        elif sig == "kill":
+            _signal(proc, None if os.name == "nt" else signal.SIGKILL)
+        else:
+            raise ValueError(f"unknown signal {sig!r}")
 
 
 def run_all(jobs: list[Job], timeout: float | None, *, grace: float = GRACE_SECONDS) -> list[Result]:
