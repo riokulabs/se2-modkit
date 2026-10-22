@@ -62,7 +62,11 @@ def _read(p: Path) -> str | None:
 def find_pids(name: str | None = None) -> list:
     name = name or paths.process_name()
     out = []
-    for d in Path("/proc").iterdir():
+    try:
+        entries = list(Path("/proc").iterdir())
+    except OSError:     # no /proc (not Linux): no process can be found this way
+        return []
+    for d in entries:
         if not d.name.isdigit():
             continue
         comm = _read(d / "comm")
@@ -275,6 +279,14 @@ class Run:
     cmd: list
 
 
+def _kill_group(p: subprocess.Popen, sig: int) -> None:
+    """Signal the child's whole session (POSIX); Windows has no process groups to signal, so kill the child."""
+    if hasattr(os, "killpg"):
+        os.killpg(p.pid, sig)
+    else:
+        p.kill()
+
+
 def run(cmd: list, timeout: float) -> Run:
     """Run with a hard timeout; on expiry the child is killed (never left in the background)."""
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
@@ -282,11 +294,11 @@ def run(cmd: list, timeout: float) -> Run:
         out, err = p.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         try:
-            os.killpg(p.pid, 15)
+            _kill_group(p, 15)
             out, err = p.communicate(timeout=10)
         except (subprocess.TimeoutExpired, ProcessLookupError):
             try:
-                os.killpg(p.pid, 9)
+                _kill_group(p, 9)
             except ProcessLookupError:
                 pass
             out, err = p.communicate()

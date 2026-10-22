@@ -1,6 +1,7 @@
 """`se2mod test`: runs a mod's pytest suite in a subprocess and prints one summary line plus failures only."""
 
 import re
+from pathlib import Path
 
 import pytest
 from minimod import make_mod
@@ -43,7 +44,7 @@ def test_failure_shows_section_and_log_pointer(run, tmp_path):
     m = re.search(r"full log: (.+\.log)", out)
     assert m, out
     log = m.group(1).strip()
-    assert "/test-logs/m-" in log
+    assert Path(log).parent.name == "test-logs" and Path(log).name.startswith("m-")
     assert "test_broken" in open(log, encoding="utf-8").read()
 
 

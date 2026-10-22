@@ -19,7 +19,7 @@ def __getattr__(name):
         # (kit.py). Never written to. No default path: set `vanilla_ref` in the user config.
         from ..env.config import load_user_config
         ref = load_user_config().get("vanilla_ref")
-        return os.path.expanduser(str(ref)) if ref else None
+        return os.path.normpath(os.path.expanduser(str(ref))) if ref else None   # native separators
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

@@ -272,7 +272,7 @@ def content_view(u, assets_root, content_root):
         origin = os.path.abspath(str(e[4]))
         if not origin.startswith(root + os.sep):
             continue
-        rel = os.path.relpath(origin, root)
+        rel = os.path.relpath(origin, root).replace(os.sep, "/")
         out = os.path.join(content_root, os.path.splitext(rel)[0] + ".def")
         if not os.path.exists(out):
             missing.append(rel)
@@ -296,7 +296,7 @@ def stale_outputs(assets_root, content_root):
             if not f.endswith((".def", ".partialdef")):
                 continue
             src = os.path.join(dp, f)
-            rel = os.path.relpath(src, assets_root)
+            rel = os.path.relpath(src, assets_root).replace(os.sep, "/")
             with open(src, encoding="utf-8-sig") as fh:
                 d = json.load(fh)
             v = d.get("$Value") or {}

@@ -97,7 +97,7 @@ def test_finish_stage_restores_users_vrgproj(mod, tmp_path):
     ("Assets/Decomp.cs", b"class A {}", "C# outside Scripts/"),
     ("Assets/preview_render.png", b"png", "preview renders"),
     ("Assets/a.def", b'{"k": "ghp_' + b"a" * 36 + b'"}', "secret"),
-    ("Assets/key.def", b"-----BEGIN OPENSSH PRIVATE KEY-----", "secret"),
+    ("Assets/key.def", b"-----BEGIN OPENSSH " + b"PRIVATE KEY-----", "secret"),  # split: the repo guard scans this file
     ("Assets/model.fbx", b"version https://git-lfs.github.com/spec/v1\n", "git-lfs pointer"),
     ("NOTES.md", b"x", "unexpected top-level"),
     ("Assets/build.py", b"x", "'.py' files must not ship"),

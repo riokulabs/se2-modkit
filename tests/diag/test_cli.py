@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 
 import pytest
 
@@ -96,6 +97,7 @@ def test_game_unreachable(env, capsys):
     assert rc == cli.EXIT_UNAVAILABLE and "not reachable" in err and "test-token" not in err
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the game pid is checked in /proc (Linux only)")
 def test_status_with_fake_game(env, capsys, fake_mcp, monkeypatch):
     monkeypatch.setenv("SE2_MCP_URL", fake_mcp.url)
     fake_mcp.reply_text = reply({

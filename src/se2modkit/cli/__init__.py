@@ -92,7 +92,12 @@ def main(argv: list[str] | None = None) -> int:
         from .publish_cmd import run
         return run(argv[1:])
     parser = _parser()
-    args = parser.parse_args(argv)
+    args, extra = parser.parse_known_args(argv)
+    if extra and extra[0] == "--" and isinstance(getattr(args, "script_args", None), list):
+        # Python 3.11's argparse leaves what follows "--" unparsed once an option came before it
+        args.script_args = [*args.script_args, *extra[1:]]
+    elif extra:
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
     if not args.command:
         parser.print_help()
         return 0

@@ -34,9 +34,10 @@ def make_env(tmp_path: Path, platform: str = "linux", **changes) -> SE2Env:
         (prefix / "drive_c" / "users" / "steamuser" / "Documents" / "SpaceEngineers2").mkdir(parents=True)
         dd = prefix / "dosdevices"
         dd.mkdir()
-        os.symlink("../drive_c", dd / "c:")
-        os.symlink(str(lib), dd / "s:")
-        os.symlink("/", dd / "z:")
+        if os.name != "nt":   # drive links named "c:" cannot exist on Windows: the prefix there maps no Wine drives
+            os.symlink("../drive_c", dd / "c:")
+            os.symlink(str(lib), dd / "s:")
+            os.symlink("/", dd / "z:")
         mods_dir = prefix / "drive_c" / "users" / "steamuser" / "Documents" / "SpaceEngineers2" / "Mods"
     else:
         mods_dir = tmp_path / "Users" / "Jörg" / "Documents" / "SpaceEngineers2" / "Mods"
