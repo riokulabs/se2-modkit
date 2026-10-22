@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import fake_sdk
 import fake_steam
 
@@ -12,7 +14,10 @@ def test_doctor_lists_checks(tmp_path, run):
     assert "Mod SDK: missing (set --sdk, SE2_SDK_ASSETS or config sdk)" in out.splitlines()
 
 
-def test_doctor_ok_with_tools(tmp_path, run):
+def test_doctor_ok_with_tools(tmp_path, run, monkeypatch):
+    # the add-on search looks in the user's Blender folders: point them at the synthetic home
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     root = tmp_path / "home" / ".steam" / "steam"
     fake_steam.make(root, apps={GAME_APP_ID: {"installdir": "G"}, SDK_APP_ID: {"installdir": "S"}})
     fake_sdk.make_game(root / "steamapps/common/G")
