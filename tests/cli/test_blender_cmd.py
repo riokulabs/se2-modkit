@@ -1,6 +1,7 @@
 """`se2mod blender run`: the Blender argv puts only the se2modkit package parent and the mod source on sys.path."""
 
 import ast
+import shlex
 from pathlib import Path
 
 import pytest
@@ -101,7 +102,8 @@ def test_multi_mod_project_without_mod_asks_which(tmp_path, monkeypatch):
     assert code == 1 and "Which mod?" in err.getvalue() and "Alpha, Beta" in err.getvalue()
     with contextlib.redirect_stdout(io.StringIO()) as out:
         code = cli.main(["blender", "run", "--print-only", "--mod", "Beta", str(tmp_path / "s.py")])
-    assert code == 0 and str(repo / "mods" / "Beta" / "Source" / "Model") in out.getvalue()
+    argv = shlex.split(out.getvalue())       # the env is Linux's: a POSIX shell command line on every host
+    assert code == 0 and repr(str(repo / "mods" / "Beta" / "Source" / "Model")) in argv[argv.index("--python-expr") + 1]
 
 
 def test_build_env_carries_game_and_sdk_versions(tmp_path):
