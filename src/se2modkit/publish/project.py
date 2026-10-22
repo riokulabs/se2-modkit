@@ -40,6 +40,8 @@ class PublishConfig:
     problems: list[str] = field(default_factory=list)
     dependencies: list[int] = field(default_factory=list)   # Workshop item ids this mod requires
     change_note_skip_sections: list[str] = field(default_factory=lambda: list(DEFAULT_SKIP_SECTIONS))
+    release_title: str = ""        # GitHub release title before the version; "" = the mod folder name
+    github_release: bool = True    # tag the published commit and publish its GitHub release after an upload
 
 
 @dataclass
@@ -294,7 +296,11 @@ def load_config(p: ModProject) -> PublishConfig:
     else:
         problems.append(f"no {CONFIG_REL} (using defaults: title = project Name, no tags)")
     known = {"title", "tags", "summary", "description", "changelog", "thumbnail", "first_visibility", "dependencies",
-             "change_note_skip_sections"}
+             "change_note_skip_sections", "release_title", "github_release"}
+    gh_release = raw.get("github_release", True)
+    if not isinstance(gh_release, bool):
+        problems.append("github_release must be true or false")
+        gh_release = True
     for k in raw:
         if k not in known:
             problems.append(f"{CONFIG_REL}: unknown key '{k}'")
@@ -335,6 +341,8 @@ def load_config(p: ModProject) -> PublishConfig:
         problems=problems,
         dependencies=deps,
         change_note_skip_sections=list(skip),
+        release_title=str(raw.get("release_title") or p.folder.name),
+        github_release=gh_release,
     )
 
 

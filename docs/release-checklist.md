@@ -29,6 +29,13 @@ Tag only after the Windows manual pass is recorded in `docs/windows.md`.
 2. `git tag vX.Y.Z` locally. Never move a tag that exists on a remote.
 3. Mods bump their pin to the new tag in their own commit.
 
+## Mod releases
+
+A mod release is tagged by the Workshop publisher, not by hand: `se2publish publish MOD --version X.Y.Z
+--i-have-user-approval` tags the published commit, pushes the tag and publishes the GitHub release with the full
+CHANGELOG section ([publish.md](publish.md#git-tag-and-github-release)). If it prints a warning instead, run the
+commands it lists. Do not push a mod's release tag before the upload: the tag has to point at the commit that shipped.
+
 ## Before publishing
 
 1. Run `python -m pytest -q tests/test_no_leaks.py`. It scans every tracked or untracked-not-ignored file for machine

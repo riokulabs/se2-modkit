@@ -19,7 +19,7 @@ from .hostenv import GAME_APP_ID, build_env, find_libsteam_api, hub_bundles
 from .project import Refusal, check_canonical, load_config, read_ledger, read_tracked, select_mod
 from .publish import assemble, execute, preflight_live, render_plan
 from .stage import Limits, StageResult, check_tree, collect_head_scripts, stage
-from . import progress
+from . import progress, release
 
 
 def discover() -> SE2Env:
@@ -170,9 +170,11 @@ def cmd_publish(args) -> int:
         backend = FlatApiBackend(lib, GAME_APP_ID)
     try:
         with progress.step("uploading to the Workshop"):
-            execute(plan, backend, adopt_existing=args.adopt_existing)
+            item = execute(plan, backend, adopt_existing=args.adopt_existing)
     finally:
         backend.close()
+    # only after the upload succeeded; problems here are warnings, never a failed publish
+    release.after_upload(p, cfg, plan.release_version, plan.stage.head, item)
     return 0
 
 
