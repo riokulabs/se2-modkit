@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import os
+
+import pytest
+
 from se2modkit import gpu
+
+sysfs_names = pytest.mark.skipif(os.name == "nt", reason="sysfs PCI names contain ':', not valid in Windows paths")
 
 VULKANINFO = """\
 GPU0:
@@ -29,12 +35,14 @@ def _sysfs(tmp_path, cards):
     return tmp_path
 
 
+@sysfs_names
 def test_vulkan_indices_map_to_pci_addresses(tmp_path):
     sysfs = _sysfs(tmp_path, {"0000:44:00.0": (0, 0), "0000:09:00.0": (0, 0)})
     assert gpu.parse_vulkaninfo(VULKANINFO, sysfs) == [(0, "0000:44:00.0"), (1, "0000:09:00.0")]
     assert gpu.parse_vulkaninfo(VULKANINFO, tmp_path / "none") == []
 
 
+@sysfs_names
 def test_least_busy_then_less_vram(tmp_path):
     sysfs = _sysfs(tmp_path, {"0000:44:00.0": (70, 1), "0000:09:00.0": (5, 2)})
     gpus = gpu.sample([(0, "0000:44:00.0"), (1, "0000:09:00.0")], window=0, sysfs=sysfs)

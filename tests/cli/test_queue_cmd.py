@@ -49,7 +49,7 @@ def test_status_log_and_cancel(run, q):
     done = store.submit(["echo", "b"], name="b", environ={})
     done.state, done.exit, done.started, done.ended = "done", 0, 1.0, 3.0
     store.save(done)
-    store.log_path(done.id).write_text("hello\n", encoding="utf-8")
+    store.log_path(done.id).write_bytes(b"hello\n")
 
     code, out, _ = run("queue", "--queue-dir", str(qdir), "status")
     assert code == 0 and "runner: not running" in out
