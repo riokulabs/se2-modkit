@@ -2,6 +2,8 @@ import os
 import sys
 import time
 
+import pytest
+
 from se2modkit.diag import host
 
 STAT = ("4242 (VRage (x) 1) S 1 4242 4242 0 -1 4194304 1500 0 7 0 900 100 0 0 20 0 64 0 123456 9000000000 "
@@ -67,6 +69,7 @@ def test_run_timeout_kills_child():
     assert r.rc == 124 and "timed out" in r.err and time.monotonic() - t0 < 10
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the process list is read from /proc (Linux only)")
 def test_find_pids_self():
     me = open(f"/proc/{os.getpid()}/comm").read().strip()
     assert os.getpid() in host.find_pids(me)

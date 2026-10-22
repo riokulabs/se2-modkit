@@ -1,6 +1,7 @@
 """`se2mod play`: the Steam and Pulsar launch argv on Linux and Windows, and the refusals of the legacy script."""
 
 import os
+import shlex
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from se2modkit.env import procs
 from se2modkit.env.core import EnvError
 
 MODS_WIN = r"C:\users\steamuser\Documents\SpaceEngineers2\Mods"
+wine_only = pytest.mark.skipif(os.name == "nt", reason="Wine paths need a Proton prefix's drive links (Linux only)")
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +31,7 @@ def _attached(tmp_path, platform="linux", **changes):
     return env, root
 
 
+@wine_only
 def test_steam_argv_linux_matches_legacy(tmp_path):
     env, root = _attached(tmp_path)
     a = make_mod(root, "Alpha", scripts=True)
@@ -46,6 +49,7 @@ def test_steam_argv_linux_matches_legacy(tmp_path):
     assert play_cmd.steam_argv(env, [], scripts=False) == ["steam", "-applaunch", "1133870", "-startupTag:HUB"]
 
 
+@wine_only
 def test_steam_argv_mod_outside_mount_uses_its_own_wine_path(tmp_path):
     env, root = _attached(tmp_path)
     other = make_mod(tmp_path / "elsewhere", "Gamma")
@@ -141,7 +145,7 @@ def test_play_refuses_when_running(run, tmp_path, monkeypatch):
     assert code == 4 and not seen and out == ""  # no launch command printed for a launch that does not happen
     assert "native SE2 (Pulsar) is already running; quit it first, mods are only read at startup" in err
     code, out, _ = run("play", "--native", "--print-only", environ={"SE2_PULSAR": str(pulsar)})
-    assert code == 0 and out.strip() == f"{pulsar} -startupTag:HUB" and not seen
+    assert code == 0 and out.strip() == shlex.join([str(pulsar), "-startupTag:HUB"]) and not seen
 
 
 def test_play_print_only_launches_nothing(run, tmp_path, monkeypatch):
@@ -151,7 +155,7 @@ def test_play_print_only_launches_nothing(run, tmp_path, monkeypatch):
     monkeypatch.setattr(procs, "game_running", lambda **_: False)
     code, out, err = run("play", "--native", "--print-only", "--no-scripts", environ={"SE2_PULSAR": str(pulsar)})
     assert code == 0 and not seen
-    assert out.strip() == f"{pulsar} -startupTag:HUB"
+    assert out.strip() == shlex.join([str(pulsar), "-startupTag:HUB"])
 
 
 def test_play_native_launches_detached(run, tmp_path, monkeypatch):

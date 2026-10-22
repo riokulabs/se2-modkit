@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,8 @@ G_B = "bbbbbbbb-0000-4000-8000-00000000000b"
 T_BLOCK = "Game2:Keen.Game2.Test.BlockDefinitionObjectBuilder"
 T_OTHER = "Game2:Keen.Game2.Test.OtherDefinitionObjectBuilder"
 EXE = "VRage.ContentPipeline.Builder.exe"
+HOST = "win32" if os.name == "nt" else "linux"   # the platform the portable build tests run as
+wine_only = pytest.mark.skipif(os.name == "nt", reason="Wine paths need a Proton prefix's drive links (Linux only)")
 
 
 @pytest.fixture(autouse=True)
@@ -40,8 +43,9 @@ def _env(tmp_path: Path, platform: str = "linux") -> SE2Env:
     prefix = tmp_path / "compatdata" / "pfx"
     (prefix / "drive_c").mkdir(parents=True)
     (prefix / "dosdevices").mkdir()
-    os.symlink("../drive_c", prefix / "dosdevices" / "c:")
-    os.symlink("/", prefix / "dosdevices" / "z:")
+    if os.name != "nt":   # drive links named "c:" cannot exist on Windows
+        os.symlink("../drive_c", prefix / "dosdevices" / "c:")
+        os.symlink("/", prefix / "dosdevices" / "z:")
     linux = platform.startswith("linux")
     return SE2Env(
         platform=platform, steam_root=lib, libraries=(lib,), game_dir=game, sdk_dir=sdk,
@@ -54,6 +58,11 @@ def _env(tmp_path: Path, platform: str = "linux") -> SE2Env:
 
 def _wine(p: Path) -> str:
     return "Z:" + str(p.resolve()).replace("/", "\\")
+
+
+def _builder_path(env: SE2Env, p: Path) -> str:
+    """A path as the SDK builder sees it: the Wine path under Proton, the native one on Windows."""
+    return _wine(p) if env.platform.startswith("linux") else str(p)
 
 
 def _write(path: Path, data) -> Path:
@@ -98,6 +107,7 @@ class FakeRun:
 # --- invocation -------------------------------------------------------------------------------------------------
 
 
+@wine_only
 def test_invocation_linux(tmp_path):
     env, d = _env(tmp_path), _mod(tmp_path)
     proj = d / "Jörg Mod.vrgproj"
@@ -119,6 +129,7 @@ def test_invocation_windows(tmp_path):
     assert "WINEPREFIX" not in run_env
 
 
+@wine_only
 def test_invocation_missing_wine_is_one_sentence(tmp_path):
     env, d = _env(tmp_path), _mod(tmp_path)
     (env.proton / "files" / "bin" / "wine").unlink()
@@ -129,6 +140,7 @@ def test_invocation_missing_wine_is_one_sentence(tmp_path):
 # --- project patching -------------------------------------------------------------------------------------------
 
 
+@wine_only
 def test_project_paths_with_spaces(tmp_path):
     env, d = _env(tmp_path), _mod(tmp_path)
     standin = env.cache_dir / "standin" / "SDK" / "GameData"
@@ -164,7 +176,7 @@ def test_project_patch_is_idempotent_and_native_on_windows(tmp_path):
 
 
 def test_sdk_project_dirs_prefers_cache_standin_then_workspace(tmp_path, monkeypatch):
-    env = _env(tmp_path)
+    env = _env(tmp_path, platform=HOST)
     ws = tmp_path / "work space"
     (ws / "tools" / "standin" / "SDK" / "GameData").mkdir(parents=True)
     assert sdkbuild.sdk_project_dirs(env, environ={}) == [env.sdk_dir / "GameData"]
@@ -249,7 +261,7 @@ def test_ensure_metas(tmp_path):
 
 def _buildable(tmp_path):
     """A mod with Scripts/, a current output and a stale one (older than its asset)."""
-    env, d = _env(tmp_path), _mod(tmp_path)
+    env, d = _env(tmp_path, platform=HOST), _mod(tmp_path)
     (d / "Scripts").mkdir()
     (d / "Scripts" / "Main.cs").write_text("// script", encoding="utf-8")
     _block_def(d, "A.def", Size=1)
@@ -366,6 +378,7 @@ def test_unreadable_def_stops_build_before_any_meta(tmp_path):
     assert (d / "Scripts").is_dir()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
 def test_sigterm_during_build_restores_everything(tmp_path):
     import signal
 
@@ -389,10 +402,10 @@ def test_sigterm_during_build_restores_everything(tmp_path):
 
 
 def test_left_patched_project_warns_and_is_kept(tmp_path, capsys):
-    env, d = _env(tmp_path), _mod(tmp_path)
+    env, d = _env(tmp_path, platform=HOST), _mod(tmp_path)
     proj = d / "Jörg Mod.vrgproj"
     data = json.loads(proj.read_text(encoding="utf-8"))
-    data["$Value"]["GameExecutableSearchPaths"] = [_wine(env.game_dir / "Game2")]
+    data["$Value"]["GameExecutableSearchPaths"] = [_builder_path(env, env.game_dir / "Game2")]
     _write(proj, data)
     left = proj.read_bytes()
     with sdkbuild.patched_project(proj, env):
@@ -402,7 +415,7 @@ def test_left_patched_project_warns_and_is_kept(tmp_path, capsys):
 
 
 def test_clean_project_does_not_warn(tmp_path, capsys):
-    env, d = _env(tmp_path), _mod(tmp_path)
+    env, d = _env(tmp_path, platform=HOST), _mod(tmp_path)
     with sdkbuild.patched_project(d / "Jörg Mod.vrgproj", env):
         pass
     assert "already holds" not in capsys.readouterr().err

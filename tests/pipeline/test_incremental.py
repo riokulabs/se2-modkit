@@ -772,7 +772,7 @@ def test_a_read_outside_any_block_keeps_what_it_saw_when_the_build_rewrites_it(t
     read: the blocks built from the old content rebuild on the next run."""
     import hashlib
     f = tmp_path / "data.txt"
-    f.write_text("  1  \n", encoding="utf-8")
+    f.write_bytes(b"  1  \n")
     with IN.run_scope():
         f.read_text(encoding="utf-8")
         f.write_text("1\n", encoding="utf-8")
@@ -1180,7 +1180,7 @@ def test_a_read_the_mods_code_made_at_import_keeps_what_it_saw(tmp_path, monkeyp
     rewrote the file before the block finished; in a later run of the same process, where the module still holds that
     table and nothing reads it again, it is unknown: never fresh."""
     import hashlib
-    (tmp_path / "data.txt").write_text("  1  \n", encoding="utf-8")
+    (tmp_path / "data.txt").write_bytes(b"  1  \n")
     (tmp_path / "xxtab_unit.py").write_text("from pathlib import Path\n"
                                             "T = (Path(__file__).parent / 'data.txt').read_text()\n", encoding="utf-8")
     monkeypatch.syspath_prepend(str(tmp_path))

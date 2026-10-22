@@ -30,7 +30,8 @@ def _linux_home(tmp_path: Path, *, with_prefix=True, with_pulsar=True) -> Path:
     if with_prefix:
         dd = root / "steamapps/compatdata/1133870/pfx/dosdevices"
         dd.mkdir(parents=True)
-        os.symlink("/", dd / "z:")
+        if os.name != "nt":       # "z:" is not a valid file name on Windows; discovery only needs the prefix folder
+            os.symlink("/", dd / "z:")
     if with_pulsar:
         (home / ".config/Pulsar").mkdir(parents=True)
         (home / ".config/Pulsar/Modern.bin").write_text("", encoding="utf-8")

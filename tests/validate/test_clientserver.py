@@ -75,10 +75,13 @@ def test_later_roots_replace_earlier_files(tmp_path):
 
 
 def test_cached_root_round_trips(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    from se2modkit.env.config import user_cache_dir
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))     # the user cache on Linux and macOS
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "cache"))       # and on Windows
     root = write_tree(tmp_path / "Vanilla", universe_files())
     first = csw.Universe([str(root)], cached_roots=[str(root)])
-    assert list((tmp_path / "cache" / "se2modkit" / "universe").glob("universe-*.pickle"))
+    assert user_cache_dir().is_relative_to(tmp_path / "cache")
+    assert list((user_cache_dir() / "universe").glob("universe-*.pickle"))
     second = csw.Universe([str(root)], cached_roots=[str(root)])
     assert second.entries.keys() == first.entries.keys()
     assert csw.unresolved(csw.walk(second)) == {}
