@@ -86,10 +86,9 @@ def test_changelog_sections_and_selection():
 
 
 def test_change_note_from_changelog(mod):
-    note = build_change_note(mod, mod / "CHANGELOG.md", "1.1.0", None, (mod / "CHANGELOG.md").read_text(),
-                             game_version="4.0.0.3151")
+    note = build_change_note(mod, mod / "CHANGELOG.md", "1.1.0", None, (mod / "CHANGELOG.md").read_text())
     assert note.source == "changelog:CHANGELOG.md#1.1.0"
-    assert note.text == ("v1.1.0 - 2026-10-20 - game 4.0.0.3151\n[h3]Added[/h3]\n[list]\n[*]New [b]rack[/b] block\n"
+    assert note.text == ("v1.1.0 - 2026-10-20\n[h3]Added[/h3]\n[list]\n[*]New [b]rack[/b] block\n"
                          "[*]Fix for [noparse][b][/noparse] tags in [noparse][noparse][/noparse] text\n[/list]")
     assert note.warnings == []
 
@@ -128,3 +127,46 @@ def test_change_note_trimmed_with_warning(mod):
     note = build_change_note(mod, mod / "CHANGELOG.md", "3.0.0", None, big)
     assert steam_bytes(note.text) <= 8000
     assert any("trimmed" in w for w in note.warnings)
+
+
+SKIPPY = ("# Changelog\n\n## [1.2.0] - 2026-10-21\n### Added\n- New rack\n\n### For modders\n- API hook\n\n"
+          "### documentation\n- Docs\n\n### Fixed\n- Crash\n\n### Development\n- CI\n")
+
+
+def _note(mod, **kw):
+    return build_change_note(mod, mod / "CHANGELOG.md", "1.2.0", None, SKIPPY, **kw)
+
+
+def test_change_note_skips_non_mod_sections_by_default(mod):
+    note = _note(mod)
+    assert note.text == ("v1.2.0 - 2026-10-21\n[h3]Added[/h3]\n[list]\n[*]New rack\n[/list]\n\n"
+                         "[h3]Fixed[/h3]\n[list]\n[*]Crash\n[/list]")
+    assert note.warnings == ["change note leaves out section(s): For modders, documentation, Development"]
+
+
+def test_change_note_custom_skip_list(mod):
+    note = _note(mod, skip_sections=["fixed"])
+    assert "Crash" not in note.text and "API hook" in note.text and "CI" in note.text
+    assert note.warnings == ["change note leaves out section(s): Fixed"]
+
+
+def test_change_note_empty_skip_list_keeps_everything(mod):
+    note = _note(mod, skip_sections=[])
+    assert all(s in note.text for s in ("New rack", "API hook", "Docs", "Crash", "CI"))
+    assert note.warnings == []
+
+
+def test_change_note_everything_filtered_leaves_header_only(mod):
+    md = "## [1.2.0] - 2026-10-21\n### For modders\n- API\n\n### Development\n- CI\n"
+    note = build_change_note(mod, mod / "CHANGELOG.md", "1.2.0", None, md)
+    assert note.text == "v1.2.0 - 2026-10-21"
+
+
+def test_publish_toml_skip_sections_key(mod):
+    from se2modkit.publish.project import load_config, load_project
+    assert load_config(load_project(mod)).change_note_skip_sections == ["For modders", "Documentation", "Development"]
+    toml = mod / "docs/workshop/publish.toml"
+    toml.write_text(toml.read_text() + 'change_note_skip_sections = []\n')
+    git(mod, "commit", "-qam", "cfg")
+    cfg = load_config(load_project(mod))
+    assert cfg.change_note_skip_sections == [] and not any("unknown key" in x for x in cfg.problems)

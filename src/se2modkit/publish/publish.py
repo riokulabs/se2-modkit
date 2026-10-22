@@ -74,11 +74,11 @@ def check_remote(decision: Decision, remote, me: int, adopt_existing: bool, ours
 
 
 def change_note_for(p: ModProject, cfg: PublishConfig, version: str | None, ledger: list[dict],
-                    override: Path | None, game_version: str | None = None) -> ChangeNote:
+                    override: Path | None) -> ChangeNote:
     data = read_tracked(p, cfg.changelog)
     return build_change_note(p.folder, cfg.changelog, version, last_published_commit(ledger),
                              changelog_text=data.decode("utf-8") if data is not None else None,
-                             override_file=override, game_version=game_version)
+                             override_file=override, skip_sections=cfg.change_note_skip_sections)
 
 
 @dataclass
@@ -102,8 +102,7 @@ class Plan:
 
 def assemble(p: ModProject, cfg: PublishConfig, *, version: str | None, visibility: str | None,
              adopt_existing: bool, change_note_file: Path | None, keep_web_description: bool,
-             stage: StageResult | None, bundles: dict[str, str], strict_git: bool,
-             game_version: str | None = None) -> Plan:
+             stage: StageResult | None, bundles: dict[str, str], strict_git: bool) -> Plan:
     blockers: list[str] = []
     warnings: list[str] = list(cfg.problems)
     tag_mod, version = split_release_tag(version)
@@ -161,7 +160,7 @@ def assemble(p: ModProject, cfg: PublishConfig, *, version: str | None, visibili
         if visibility is None:
             warnings.append("visibility: kept as it is on Steam (pass --visibility to change it); the metadata "
                             "copy is filled in from Steam at upload time")
-    note = change_note_for(p, cfg, version, ledger, change_note_file, game_version)
+    note = change_note_for(p, cfg, version, ledger, change_note_file)
     warnings += note.warnings
     if stage is not None:
         warnings += stage.warnings

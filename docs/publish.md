@@ -54,7 +54,7 @@ short: the SDK's model importer fails on Windows paths of 260+ characters.
 
 | File | Purpose |
 |---|---|
-| `docs/workshop/publish.toml` | title, tags, summary, file locations, dependencies (all optional) |
+| `docs/workshop/publish.toml` | title, tags, summary, file locations, dependencies, change-note skip list (all optional) |
 | `docs/workshop/description.bbcode` | the Workshop description (Steam BBCode, ≤ 8000 bytes counting newlines as CRLF) |
 | `CHANGELOG.md` | Keep a Changelog; the section for the published version becomes the change note |
 | `docs/workshop/thumb.jpg` | preview image, JPEG < 1 MB (1280×720 recommended) |
@@ -69,6 +69,7 @@ description = "docs/workshop/description.bbcode"
 changelog = "CHANGELOG.md"
 thumbnail = "docs/workshop/thumb.jpg"
 first_visibility = "Unlisted"             # first upload only
+change_note_skip_sections = ["For modders", "Documentation", "Development"]   # CHANGELOG ### subsections left out of the change note (case-insensitive; [] keeps all)
 dependencies = []                         # Workshop item ids this mod requires (Keen metadata "Dependencies")
 ```
 
@@ -133,11 +134,13 @@ the HUB; that keeps the metadata under Steam's 5000-byte limit. The writer is ch
 fixture.
 
 **Change notes** come from the `CHANGELOG.md` section for `--version` (default: the newest released section). The
-first line is `v1.2.0 - 2026-10-20 - game 4.0.0.3151`, then the section converted to BBCode with the small converter
+first line is `v1.2.0 - 2026-10-20`, then the section converted to BBCode with the small converter
 in `se2publish/bbcode.py` (only tags that render on the Change Notes tab). If the section is missing, the note
 summarizes the git commits since the last published commit in the ledger.
 Notes over 2000 bytes warn; over 8000 bytes (Valve documents no limit) they are trimmed at a line boundary with a
-warning. `--change-note-file` overrides (`.md` is converted, `.bbcode` is sent as is).
+warning. CHANGELOG `###` subsections named in `change_note_skip_sections` in `publish.toml` (default: For modders,
+Documentation, Development; matched case-insensitively; `[]` keeps everything) are left out of the note, and the dry
+run lists what was dropped. `--change-note-file` overrides (`.md` is converted, `.bbcode` is sent as is).
 
 ### Safety rules
 

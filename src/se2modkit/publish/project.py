@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from . import gitutil
+from .changelog import DEFAULT_SKIP_SECTIONS
 from .metadata import MOD_TAGS, VISIBILITIES, guid_to_item_id
 
 CONFIG_REL = "docs/workshop/publish.toml"
@@ -38,6 +39,7 @@ class PublishConfig:
     source: Path | None             # the publish.toml it came from (None = defaults only)
     problems: list[str] = field(default_factory=list)
     dependencies: list[int] = field(default_factory=list)   # Workshop item ids this mod requires
+    change_note_skip_sections: list[str] = field(default_factory=lambda: list(DEFAULT_SKIP_SECTIONS))
 
 
 @dataclass
@@ -291,7 +293,8 @@ def load_config(p: ModProject) -> PublishConfig:
         problems.append(f"{CONFIG_REL} is not committed (a real upload needs it committed)")
     else:
         problems.append(f"no {CONFIG_REL} (using defaults: title = project Name, no tags)")
-    known = {"title", "tags", "summary", "description", "changelog", "thumbnail", "first_visibility", "dependencies"}
+    known = {"title", "tags", "summary", "description", "changelog", "thumbnail", "first_visibility", "dependencies",
+             "change_note_skip_sections"}
     for k in raw:
         if k not in known:
             problems.append(f"{CONFIG_REL}: unknown key '{k}'")
@@ -316,6 +319,10 @@ def load_config(p: ModProject) -> PublishConfig:
     if vis not in VISIBILITIES:
         problems.append(f"first_visibility '{vis}' is not one of {', '.join(VISIBILITIES)}")
         vis = "Unlisted"
+    skip = raw.get("change_note_skip_sections", list(DEFAULT_SKIP_SECTIONS))
+    if not isinstance(skip, list) or not all(isinstance(x, str) for x in skip):
+        problems.append("change_note_skip_sections must be a list of section names")
+        skip = list(DEFAULT_SKIP_SECTIONS)
     return PublishConfig(
         title=str(raw.get("title", p.name)),
         tags=tags,
@@ -327,6 +334,7 @@ def load_config(p: ModProject) -> PublishConfig:
         source=src if src.exists() else None,
         problems=problems,
         dependencies=deps,
+        change_note_skip_sections=list(skip),
     )
 
 

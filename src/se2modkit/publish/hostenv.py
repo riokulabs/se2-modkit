@@ -13,7 +13,7 @@ from ..env.versions import SYSTEM_RUNTIME_BUNDLE, bundle_versions_from_dlls
 from .project import Refusal
 
 __all__ = ["GAME_APP_ID", "GAME_PROCS", "HUB_PROCS", "SDK_APP_ID", "TEXCONV", "BuildEnv", "build_env",
-           "find_libsteam_api", "find_processes", "game_version", "hub_bundles"]
+           "find_libsteam_api", "find_processes", "hub_bundles"]
 
 
 @dataclass(frozen=True)
@@ -55,13 +55,6 @@ def build_env(env: SE2Env) -> BuildEnv:
                                                                   for m in missing))
     steamapps = env.prefix.parents[2]       # <library>/steamapps/compatdata/<app>/pfx
     return BuildEnv(steamapps, env.game_dir, env.sdk_dir, env.prefix, env.proton)
-
-
-def game_version(env: SE2Env) -> str | None:
-    """The installed game's VRage bundle version (the change note's "game X" and the metadata stamp)."""
-    if env.game_dir is None:
-        return None
-    return bundle_versions_from_dlls(env.game_dir / "Game2/VRage.Core.dll").get("VRage")
 
 
 def hub_bundles(env: SE2Env) -> dict[str, str]:

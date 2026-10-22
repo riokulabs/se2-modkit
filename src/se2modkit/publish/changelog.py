@@ -3,11 +3,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from collections.abc import Sequence
 from pathlib import Path
 
 from . import gitutil
 from .bbcode import (CHANGE_NOTE, CHANGE_NOTE_MAX_BYTES, CHANGE_NOTE_WARN_BYTES, MarkdownToBBCode, MarkupConverter,
                      steam_bytes, trim_to_bytes, validate)
+
+# Subsections of a CHANGELOG section that are not about the mod itself; left out of the Steam change note.
+DEFAULT_SKIP_SECTIONS: tuple[str, ...] = ("For modders", "Documentation", "Development")
 
 # Keep a Changelog headings: "## [1.2.0] - 2026-10-20", "## 1.2.0", "## v1.2.0 (2026-10-20)", "## [Unreleased]"
 _SECTION = re.compile(r"^##\s+\[?v?(?P<ver>[^\]\s]+)\]?(?:\s*[-–(]\s*(?P<date>[^)]*?)\)?)?\s*$")
@@ -40,6 +44,30 @@ def changelog_sections(md: str) -> list[tuple[str, str | None, str]]:
     if cur:
         out.append((cur[0], cur[1], "\n".join(body).strip("\n")))
     return out
+
+
+def filter_subsections(body: str, skip: Sequence[str]) -> tuple[str, list[str]]:
+    """Drop every `###` subsection whose heading equals (case-insensitively) an entry of `skip`.
+
+    Returns (remaining markdown, headings dropped in file order)."""
+    names = {s.strip().casefold() for s in skip}
+    if not names:
+        return body, []
+    out: list[str] = []
+    dropped: list[str] = []
+    skipping = False
+    fenced = False
+    for line in body.split("\n"):
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+        m = None if fenced else re.match(r"^#{1,3}[ \t]+(.*?)[ \t#]*$", line)
+        if m:
+            skipping = len(line) - len(line.lstrip("#")) == 3 and m.group(1).strip().casefold() in names
+            if skipping:
+                dropped.append(m.group(1).strip())
+        if not skipping:
+            out.append(line)
+    return "\n".join(out).strip("\n"), dropped
 
 
 def find_section(md: str, version: str | None) -> tuple[str, str | None, str] | None:
@@ -77,8 +105,9 @@ def git_summary(repo: Path, since: str | None, limit: int = 40) -> tuple[str, st
 def build_change_note(repo: Path, changelog: Path, version: str | None, last_commit: str | None,
                       changelog_text: str | None = None,
                       converter: MarkupConverter | None = None, override_file: Path | None = None,
-                      max_bytes: int = CHANGE_NOTE_MAX_BYTES, game_version: str | None = None) -> ChangeNote:
-    """First line is plain text "v1.2.0 - 2026-10-20 - game 4.0.0.3151", then the converted section.
+                      max_bytes: int = CHANGE_NOTE_MAX_BYTES,
+                      skip_sections: Sequence[str] = DEFAULT_SKIP_SECTIONS) -> ChangeNote:
+    """First line is plain text "v1.2.0 - 2026-10-20", then the converted section.
 
     changelog_text is the committed CHANGELOG (the caller reads it from git HEAD); None = not in git."""
     conv = converter or MarkdownToBBCode(CHANGE_NOTE)
@@ -98,15 +127,16 @@ def build_change_note(repo: Path, changelog: Path, version: str | None, last_com
             warnings.append(f"no committed {changelog.name}; change note falls back to git history")
         if sec is not None:
             ver, date, body = sec
-            first = " - ".join(x for x in (f"v{ver.lstrip('vV')}", date,
-                                           f"game {game_version}" if game_version else None) if x)
-            bb = first + "\n" + conv.convert(body)
+            first = " - ".join(x for x in (f"v{ver.lstrip('vV')}", date) if x)
+            body, dropped = filter_subsections(body, skip_sections)
+            if dropped:
+                warnings.append("change note leaves out section(s): " + ", ".join(dropped))
+            bb = first + "\n" + conv.convert(body) if body.strip() else first
             src = f"changelog:{changelog.name}#{ver}"
         else:
             md, src = git_summary(repo, last_commit)
             ver = version
-            first = " - ".join(x for x in (f"v{ver.lstrip('vV')}" if ver else None,
-                                           f"game {game_version}" if game_version else None) if x)
+            first = f"v{ver.lstrip('vV')}" if ver else ""
             bb = (first + "\n" if first else "") + conv.convert(md)
     bb, trimmed = trim_to_bytes(bb, max_bytes)
     if trimmed:
