@@ -1,0 +1,61 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+# Label plan. Not applied by anything yet. Use with a label-sync tool, for example
+# EndBug/label-sync (a workflow) or `github-label-sync` (CLI), run by hand after reviewing the diff.
+# Format: name, color (hex, no #), description.
+- name: bug
+  color: d73a4a
+  description: Something does not work as documented
+- name: enhancement
+  color: a2eeef
+  description: A change to something that already exists
+- name: feature
+  color: 0e8a16
+  description: Something new
+- name: question
+  color: d876e3
+  description: Usage question; prefer Discussions
+- name: documentation
+  color: 0075ca
+  description: README, docs or comments
+- name: needs-triage
+  color: ededed
+  description: Not looked at yet
+- name: needs-info
+  color: fbca04
+  description: Waiting on the reporter
+- name: confirmed
+  color: 5319e7
+  description: Reproduced by the maintainer
+- name: good first issue
+  color: 7057ff
+  description: Small and well described
+- name: help wanted
+  color: 008672
+  description: Outside help welcome
+- name: blocked-upstream
+  color: b60205
+  description: Depends on a change in the game, SDK or another project
+- name: duplicate
+  color: cfd3d7
+  description: Already reported
+- name: wontfix
+  color: ffffff
+  description: Will not be changed
+- name: invalid
+  color: e4e669
+  description: Not a bug in this project
+- name: security
+  color: ee0701
+  description: Security related; sensitive details go to a private advisory
+- name: dependencies
+  color: 0366d6
+  description: Dependency updates
+- name: github-actions
+  color: 000000
+  description: Workflow changes
+- name: cla:minor-gpl-only
+  color: c2e0c6
+  description: From a minor without a guardian's CLA agreement; code stays GPL-only
+- name: pipeline
+  color: c5def5
+  description: Blender model pipeline, SDK build or validation

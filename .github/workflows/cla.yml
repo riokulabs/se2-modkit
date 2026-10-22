@@ -1,0 +1,73 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+name: cla
+# Contributor Licence Agreement check. Text: https://github.com/riokulabs/.github/blob/main/CLA.md
+# Signatures for the whole org live in the private repo riokulabs/cla-signatures (one file, sign once).
+#
+# SECURITY: pull_request_target runs with the base repository's secrets, also for pull requests from forks.
+# That is safe only because nothing here checks out or runs code from the pull request.
+# Never add actions/checkout (or any step that reads the PR's files) to this workflow.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, reopened, synchronize, closed]
+
+permissions: {}
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  cla:
+    # This job name is the required status check ("CLA Assistant") in the main ruleset.
+    name: CLA Assistant
+    # Pull request events, or a comment on a pull request that is the sign phrase or "recheck".
+    # (contains() is case-insensitive; the action does the exact matching.)
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request &&
+       (github.event.comment.body == 'recheck' ||
+        contains(github.event.comment.body, 'I have read the Rioku Labs CLA and I hereby sign it')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write        # re-run the failed pull_request_target run after someone signs by comment
+      contents: read
+      pull-requests: write  # post the CLA comment, lock the conversation after merge
+    steps:
+      - name: Token for the signatures repo
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.CLA_APP_ID }}
+          private-key: ${{ secrets.CLA_APP_PRIVATE_KEY }}
+          owner: riokulabs
+          repositories: cla-signatures
+          permission-contents: write
+
+      - name: CLA Assistant
+        # riokulabs/cla-action is our fork of iainmcgin/cla-github-action. Pinned to a full SHA (never a tag or
+        # branch); bump it only to a commit reviewed per docs/cla-action-review.md in riokulabs/.github.
+        uses: riokulabs/cla-action@0b62b0cd03d96b423726bebff3bfaf7bdd078881 # v3.2.0-rioku.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The action's name for the token that writes to the remote signatures repo. It is a GitHub App
+          # installation token limited to riokulabs/cla-signatures, not a personal access token.
+          PERSONAL_ACCESS_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          path-to-document: https://github.com/riokulabs/.github/blob/cla-v1.0/CLA.md
+          remote-organization-name: riokulabs
+          remote-repository-name: cla-signatures
+          branch: main
+          # One file for the whole org. A new CLA version that changes rights gets a new path (signatures/v2/...).
+          path-to-signatures: signatures/v1/cla.json
+          custom-pr-sign-comment: I have read the Rioku Labs CLA and I hereby sign it
+          # Exact logins only, no wildcards. The fork only exempts commits linked to a GitHub account (see
+          # docs/cla-action-review.md).
+          # no human logins: names of unlinked commits can be spoofed; the maintainer signs once like everyone
+          allowlist: "dependabot[bot],github-actions[bot]"
+          signed-commit-message: "chore: $contributorName signed the CLA in $owner/$repo#$pullRequestNo"
+          create-file-commit-message: "chore: create the CLA signatures file"
+          lock-pullrequest-aftermerge: true
+          require-opener-as-author: true

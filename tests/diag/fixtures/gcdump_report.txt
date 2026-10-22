@@ -1,0 +1,7 @@
+   1,234,567,890  GC Heap bytes
+      12,345,678  GC Heap objects
+
+   Object Bytes     Count  Type
+     400,000,000    10,000  System.Byte[] (Bytes > 100K)  [System.Private.CoreLib.dll]
+         123,456     4,321  System.String  [System.Private.CoreLib.dll]
+     900,000,000         3  Keen.VRage.Library.Collections.Big[]  [VRage.Library.dll]

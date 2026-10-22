@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# managed by riokulabs/.github - edit there (templates/), not here
+# Opt-in pre-commit hook. Install: scripts/install-hooks.sh
+# Forbidden files, oversized files and obvious secrets in what is staged.
+# For the heavier scanners (gitleaks, ruff) use pre-commit: see .pre-commit-config.yaml.
+exec python3 "$(git rev-parse --show-toplevel)/scripts/check_repo_guard.py" --staged

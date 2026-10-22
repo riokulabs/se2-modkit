@@ -1,0 +1,54 @@
+{
+  "$Bundles": {
+    "Game2": "4.0.0.3151",
+    "System.Runtime": "1.0.0.0",
+    "VRage": "4.0.0.3151"
+  },
+  "$Type": "VRage:Keen.VRage.Steam.Data.SteamUgcMetadata",
+  "$Value": {
+    "Id": 3900000001,
+    "PreviewUrl": null,
+    "FullMetadata": {
+      "$Type": "VRage:Keen.VRage.Core.Services.Data.ModMetadata",
+      "Id": {
+        "Id": "00000000-0000-0000-0147-75e800000000",
+        "ServiceName": "Steam"
+      },
+      "ProjectID": {
+        "Guid": "60cec301-8978-4c07-9b97-8a94a445d05d",
+        "ModId": {
+          "Id": "00000000-0000-0000-0147-75e800000000",
+          "ServiceName": "Steam"
+        },
+        "ServiceId": "Steam"
+      },
+      "Version": null,
+      "BaseMetadata": {
+        "Id": null,
+        "Title": "Demo Mod by Rioku Labs",
+        "Description": "",
+        "Visiblity": "Unlisted",
+        "Tags": [
+          "ModTagBlock",
+          "UGCModTypeTag"
+        ],
+        "IsSubscribed": false,
+        "VotesUp": 0,
+        "VotesDown": 0,
+        "Rating": 0,
+        "IsOwner": false,
+        "NumSubscriptions": 0,
+        "Size": 0,
+        "OwnerName": null,
+        "CreatedAt": "0001-01-01T00:00:00.0000000",
+        "UpdatedAt": "0001-01-01T00:00:00.0000000",
+        "WorkshopURL": null,
+        "PreviewFilePath": "thumb.jpg",
+        "Dependencies": null
+      }
+    },
+    "Author": 76561190000000001,
+    "IsReferenceToRemote": false,
+    "LastLocallyUpdated": "2026-10-20T05:10:19.0179622-07:00"
+  }
+}

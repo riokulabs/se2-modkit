@@ -1,0 +1,24 @@
+# ${name}
+
+A Space Engineers 2 mod, built with se2-modkit.
+
+## Layout
+
+- `${vrgproj}`, `Assets/`: the mod project. Definitions (`.def`, `.partialdef`) go in `Assets/`.
+- `Source/Model/${pkg}/`: model source. `catalog.py` lists the blocks, `hooks.py` holds the tables the pipeline reads.
+- `Source/Model/${build_script}.py`: builds the models (`se2mod blender run Source/Model/${build_script}.py`).
+- `Tests/`: offline tests.
+
+## Build and test
+
+```bash
+pip install "${modkit_pin}"
+python -m pytest
+se2mod build ${name_shell}
+```
+
+Renders go to `preview/` folders, which git ignores.
+
+## License
+
+GPL-3.0-only, see `LICENSE`.

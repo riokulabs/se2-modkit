@@ -1,0 +1,85 @@
+# The vanilla style profile: the defaults every Rioku Labs mod builds to. A block made to it sits next to a Keen block
+# and reads as one game. Numbers here are cited by docs/style-guide (each table row names its key); the checks read
+# them through se2modkit.style.profile. Mods tighten them in [tool.se2modkit.style]; they never relax them.
+name = "vanilla"
+
+[roles]           # material role -> library material name (assigned by GUID at export)
+paint = "PaintedMetalColorable"
+dark = "PaintedMetalDarker"
+steel = "BrushedMetal"
+hardware = "MetalDull"
+chrome = "Chrome"
+trim = "PaintedMetalYellow"
+rubber = "Rubber"
+glass = "ClearGlass"
+stencil = "AtlasFont_BarlowCondensed"
+break_face = "FracturedMaterial01"
+
+[paint]
+colorable_min_share = 0.45      # of LOD0 visible area; vanilla 0.49-0.78
+colorable_materials = ["PaintedMetalColorable"]
+
+[emissive]
+max_share = 0.003               # of LOD0 visible area, lights excepted; vanilla about 0.001-0.002
+prefix = "Emissive"             # material slots counted as emissive
+light_materials = []            # feature-light lens slots excepted from the budget; set by a profile only (a mod
+#                                 override may not grow it: per-block light exceptions are waivers)
+
+[materials]
+max_per_lod = 8
+
+[limits]          # Keen's per-model limits: se2modkit.model.limits computes them from the model's surface area
+fracture_tri_mult = 1.83425
+fracture_materials = 32
+
+[edge]
+chamfer_large = 0.09            # m, 45 degree chamfer on outer housing edges
+chamfer_small = 0.015           # m, the crisp small break
+shadow_gap = 0.016              # m, between split cover plates
+
+[mount]
+keep_out = 0.027                # m, non-mounting parts stay this far inside the box
+
+[hw]
+bolt_r = 0.009                  # m, bolt head radius
+led_size = 0.012                # m, status lens radius
+
+[decal]
+offset = 0.002                  # m proud of the surface
+max_lod = 1                     # last LOD that carries decals
+materials_prefix = ["AtlasDecal_", "AtlasFont_"]
+
+[hazard]
+max_share = 0.04                # of LOD0 visible area
+max_share_drives_guns = 0.08
+high_archetypes = ["thruster", "weapon"]
+
+[dm]
+tri_ratio_max = 1.2             # Deformed LOD0 triangles / Fractured LOD0 triangles
+dent_mm = [5, 15]               # mean dent depth band
+
+[fracture]
+min_zone_health = 0.005         # a zone's share of the block's health
+cap_uv_per_m = 0.4              # break-face texel density, the same as the painted metals
+min_zones = 2
+max_zones = 16
+
+[interior]        # broken interiors, Keen's way: a solid core, not a hollow and not a modelled machine
+min_cover = 0.8                 # share of an exposing zone's seams its neighbours cover when it dies
+max_detail_tris = 800           # interior triangles of all exposing zones together
+
+[construction]
+stages = [0, 0.1, 0.2, 0.3, 0.533, 0.767, 1]
+scaffold_share = [0.05, 0.25]   # scaffold triangles / Fractured LOD0 triangles
+
+[maker]           # the Rioku Labs R4 lab-flask maker plate
+cap = 0.06                      # m, drawn cap height
+cap_min = 0.04                  # m, smallest allowed
+proud = 0.0018                  # m
+max_per_block = 1
+
+[animation]
+overshoot = [0.002, 0.009]      # spring overshoot band of scripted motion
+
+[checks]
+extra = []

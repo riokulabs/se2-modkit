@@ -1,0 +1,30 @@
+{
+ "TargetProcess": "Modern.bin",
+ "StartTime": "10/20/2026 3:00:00 AM",
+ "Events": [
+  {
+   "timestamp": "t",
+   "provider": "System.Runtime",
+   "name": "CPU Usage (%)",
+   "tags": "",
+   "counterType": "Metric",
+   "value": 10
+  },
+  {
+   "timestamp": "t",
+   "provider": "System.Runtime",
+   "name": "CPU Usage (%)",
+   "tags": "",
+   "counterType": "Metric",
+   "value": 30
+  },
+  {
+   "timestamp": "t",
+   "provider": "System.Runtime",
+   "name": "Monitor Lock Contention Count (Count / 1 sec)",
+   "tags": "",
+   "counterType": "Rate",
+   "value": 4
+  }
+ ]
+}

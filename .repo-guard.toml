@@ -1,0 +1,9 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+# Read by scripts/check_repo_guard.py, CI and the pre-commit hook.
+# Paths are fnmatch globs against repo-relative paths; "*" also matches "/".
+forbidden = ["*.dll", "*.exe", "*.pdb", "*.so", ".env", "*.env", "*SeMcp2.cfg", "*.pem", "*.key", "*decompiled*", "*.dds", "*.fbx", "*.mwm", "*.tar.zst", "*.tsv.gz"]
+allow = []
+max_kb = 512
+allow_large = []
+secret_scan_skip = []
+json_globs = []

@@ -1,0 +1,14 @@
+2026-10-19 12:00:00.000 - Main Thread ->  App Version: 4.0.0.3151
+2026-10-19 12:00:00.010 - Main Thread ->  Runtime Framework: .NET 9.0.10
+2026-10-19 12:00:01.000 - Main Thread ->  Info: Started loading definition set Engine
+2026-10-19 12:00:01.500 - Main Thread ->  LOADING_TIME|PushEngineDefinitionSet|31.7925
+2026-10-19 12:00:01.500 - Main Thread ->  Info: Finished loading definition set Engine
+2026-10-19 12:00:05.000 - Render thread ->  LOADING_TIME|Render|4287.629
+2026-10-19 12:00:20.000 - Main Thread ->  LOADING_TIME|Main|27192.2551
+2026-10-19 12:00:21.000 - Main Thread ->  LOADING_BEGIN|Session
+2026-10-19 12:00:22.000 - Main Thread ->  Info: Started loading definition set World
+2026-10-19 12:00:25.000 - Main Thread ->  LOADING_TIME|PushWorldDefinitionSet|2799.498
+2026-10-19 12:00:25.000 - Main Thread ->  Info: Finished loading definition set World
+2026-10-19 12:00:30.000 - Main Thread ->  LOADING_TIME|EntitySpawning|5559.9668
+2026-10-19 12:00:31.000 - Main Thread ->  LOADING_TIME|Session|13000.0
+2026-10-19 12:00:31.000 - Main Thread ->  LOADING_TIME|ProtonOnly|10.0

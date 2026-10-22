@@ -1,0 +1,9 @@
+# Release zips of the generated kit assets (the Rioku atlas PNG/DDS), one per se2-modkit release, attached to the
+# GitHub Release of the matching tag. `se2mod kit fetch` downloads the zip for the installed version and checks its
+# sha256 before unpacking into the user cache. Until a release exists, build the assets with `se2mod kit build`.
+#
+# [releases."0.1.0"]
+# url = "https://github.com/<org>/se2-modkit/releases/download/v0.1.0/se2-modkit-kit-0.1.0.zip"
+# sha256 = "<64 hex digits>"
+
+[releases]

@@ -1,0 +1,26 @@
+# The Rioku decal atlas: our own emblems and signage (never vanilla art). `se2mod kit build` renders it from the SVG
+# sources into the user cache; nothing built from it is committed.
+#
+# rect = [x0, y0, x1, y1] in px, origin top-left. size = the drawn size in m the cell is made for.
+# A cell is size * px_per_m * scale px; scale 2 cells hold the same artwork for marks drawn larger.
+
+[atlas]
+name = "RiokuAtlas01"           # stem of the built texture (RiokuAtlas01.png / .dds)
+material = "RiokuAtlas01"       # the decal material a mod defines for it
+size = [256, 256]               # px
+px_per_m = 1600                 # 64 px per 40 mm
+
+[[element]]                     # the R4 maker mark at its design size (cap-40 mm plates)
+name = "r4_mark"
+family = "r4_mark"
+source = "maker-mark/r4-mark-40mm.svg"
+rect = [0, 0, 64, 64]
+size = [0.040, 0.040]
+
+[[element]]                     # the same mark at twice the density, for marks drawn over 40 mm (cap-60 mm plates)
+name = "r4_mark_2x"
+family = "r4_mark"
+source = "maker-mark/r4-mark-40mm.svg"
+rect = [64, 0, 192, 128]
+size = [0.040, 0.040]
+scale = 2

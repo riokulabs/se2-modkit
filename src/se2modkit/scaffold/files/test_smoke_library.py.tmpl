@@ -1,0 +1,14 @@
+"""Smoke test: the library mod's project and the modkit config agree."""
+
+from pathlib import Path
+
+from se2modkit.project import load_project
+
+MOD_ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_smoke():
+    mod = load_project(MOD_ROOT).containing(MOD_ROOT)
+    assert mod is not None and mod.name == ${name_py} and mod.prefix == ${prefix_py}
+    assert (MOD_ROOT / ${vrgproj_py}).is_file()
+    assert (MOD_ROOT / "Scripts").is_dir()

@@ -1,0 +1,17 @@
+2026-10-20 03:06:34.267 - Main Thread ->  App Version: 4.0.0.3151
+2026-10-20 03:06:36.400 - VRageWorker 5 ->  Shader missing in content: lighting/ircache/ircacheclearpool.hlsl. 
+ Fail reason: file does not exist 
+ Defines: { THREAD_BLOCK_SIZE = 16 } Hash: B984F8E7
+2026-10-20 03:06:36.430 - VRageWorker 5 ->  Info: Compiling shader: lighting/ircache/ircacheclearpool.hlsl 
+ Reason: file does not exist 
+ Defines: { THREAD_BLOCK_SIZE = 16 } Hash: B984F8E7
+2026-10-20 03:06:36.600 - VRageWorker 7 ->  Shader missing in content: geometry\materials\flatcolorvertex.hlsl. 
+ Fail reason: file does not exist 
+ Defines: { PASS_TRANSPARENT =  } Hash: 11
+2026-10-20 03:06:36.668 - VRageWorker 7 ->  Info: Compiling shader: geometry\materials\flatcolorvertex.hlsl 
+ Reason: file does not exist 
+ Defines: { PASS_TRANSPARENT =  } Hash: 11
+2026-10-20 03:06:40.668 - VRageWorker 2 ->  Info: Compiling shader: geometry\materials\flatcolorvertex.hlsl 
+ Reason: Cache version mismatch 
+ Defines: { PASS_HIGHLIGHT =  } Hash: 12
+2026-10-20 03:06:41.000 - Render thread ->  Error: Can't compile pso Demo.Pass

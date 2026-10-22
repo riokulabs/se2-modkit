@@ -1,0 +1,12 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or share an idea
+    url: https://github.com/riokulabs/se2-modkit/discussions
+    about: Questions, setup help and open-ended ideas belong in Discussions, not Issues.
+  - name: Report a security problem privately
+    url: https://github.com/riokulabs/se2-modkit/security/advisories/new
+    about: Do not post vulnerabilities as public issues. See SECURITY.md.
+  - name: Rioku Labs
+    url: https://rioku.dev
+    about: Project pages and other mods.

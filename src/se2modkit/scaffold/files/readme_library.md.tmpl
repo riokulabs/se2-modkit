@@ -1,0 +1,20 @@
+# ${name}
+
+A Space Engineers 2 library mod: shared definitions and script code that other mods depend on, built with
+se2-modkit.
+
+## Layout
+
+- `${vrgproj}`, `Assets/`: the mod project. Shared data definitions go in `Assets/` (a data-only placeholder for now).
+- `Scripts/`: the shared C# code.
+- `Tests/`: offline tests (`python -m pytest`).
+
+## Status
+
+How one SE2 mod depends on another (Workshop dependency, load order) and whether scripts can call across mods (a
+shared assembly reference, or a message/API surface) is still open: the core-library spike works it out. Until it
+reports, keep this mod data-only or its scripts self-contained, and do not rely on other mods calling into it.
+
+## License
+
+GPL-3.0-only, see `LICENSE`.

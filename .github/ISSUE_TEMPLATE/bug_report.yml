@@ -1,0 +1,68 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+name: Bug report
+description: The tool crashed, printed something wrong, or did the wrong thing
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste Steam credentials, tokens or private paths. Nothing here needs them.
+  - type: input
+    id: version
+    attributes:
+      label: Tool version
+      description: Tag or commit (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+  - type: input
+    id: game_version
+    attributes:
+      label: Space Engineers 2 version
+      placeholder: "4.0.0.3155"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux native (Pulsar + LinuxCompat)
+        - Linux via Proton
+        - Windows
+        - Other (say which below)
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.4"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: "Paste the output, trimmed. Remove personal paths and anything that looks like a token"
+      render: text
+    validations:
+      required: false

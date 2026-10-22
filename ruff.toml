@@ -1,0 +1,8 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+# Conservative on purpose: real errors only (syntax, undefined names, broken comparisons), no style churn.
+line-length = 120
+target-version = "py311"
+extend-exclude = []
+
+[lint]
+select = ["E9", "F63", "F7", "F82", "F811"]

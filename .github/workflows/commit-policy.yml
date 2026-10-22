@@ -1,0 +1,28 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+name: commit-policy
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commit-policy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  messages:
+    name: Conventional Commits, no AI attribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          lfs: false
+      - name: Check commit messages in the pull request
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_repo_guard.py --range "$BASE..$HEAD"

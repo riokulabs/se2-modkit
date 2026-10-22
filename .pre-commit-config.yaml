@@ -1,0 +1,34 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+# Opt-in. Install: pip install pre-commit && pre-commit install --install-hooks
+# (scripts/install-hooks.sh sets up the plain git hooks instead; use one or the other, not both.)
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0  # 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c
+    hooks:
+      - id: check-yaml
+      - id: check-json
+        exclude: '(^|/)(tsconfig[^/]*\.json|\.vscode/.*)$'
+      - id: end-of-file-fixer
+        exclude: '\.(meta|def|partialdef|fbx|png|jpg)$'
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1  # 83d9cd684c87d95d656c1458ef04895a7f1cbd8e
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1  # 38bfb07c0c64c304f47eb52090f8288150c77730
+    hooks:
+      - id: ruff
+  - repo: local
+    hooks:
+      - id: repo-guard
+        name: forbidden files, large files, secrets
+        entry: python3 scripts/check_repo_guard.py --staged
+        language: system
+        pass_filenames: false
+      - id: commit-message-policy
+        name: conventional commit, no AI attribution
+        entry: python3 scripts/check_repo_guard.py --commit-msg
+        language: system
+        stages: [commit-msg]

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# managed by riokulabs/.github - edit there (templates/), not here
+# Opt-in commit-msg hook. Install: scripts/install-hooks.sh
+# Rejects AI attribution trailers or notes and subjects that are not Conventional Commits.
+exec python3 "$(git rev-parse --show-toplevel)/scripts/check_repo_guard.py" --commit-msg "$1"

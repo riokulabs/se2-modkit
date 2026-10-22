@@ -1,0 +1,10 @@
+Process Memory: 6.00GiB
+GC: 1.52GiB
+  GC Total: 1.52GiB
+  GC Total Pause Duration: 900.00ms
+  GC Collection Count 0: 7
+Performance:
+  Main Thread:
+    Draw: 2.50ms
+  CPU Load: 12.5%
+  Worker Count: 15

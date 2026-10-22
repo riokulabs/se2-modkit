@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "se2-modkit"
+dynamic = ["version"]
+description = "Shared build tooling for Space Engineers 2 mods: environment discovery, Blender model pipeline, SDK build, validation and tests."
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+publish = []  # Pillow is optional, used only for thumbnails when installed
+diag = []
+preview = ["Pillow"]
+dev = ["pytest", "pytest-xdist", "ruff", "Pillow"]
+
+[project.scripts]
+se2mod = "se2modkit.cli:main"
+se2publish = "se2modkit.publish.cli:main"
+se2diag = "se2modkit.diag.cli:main"
+
+[project.entry-points.pytest11]
+se2modkit = "se2modkit.testing.plugin"
+
+[tool.setuptools.dynamic]
+version = { attr = "se2modkit.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+se2modkit = ["compat.toml", "profiles/*.toml", "deps/*.json", "diag/probes/*.csx", "scaffold/files/*", "kit/assets.toml",
+             "kit/atlas/*.toml", "kit/maker-mark/*.svg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "blender: needs Blender",
+  "sdk: needs the Space Engineers 2 Mod SDK",
+  "decompiled: needs a decompiled game tree",
+  "build: runs a real model/mod build",
+  "sdkbuild: runs a real SDK build",
+]

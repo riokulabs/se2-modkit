@@ -1,0 +1,37 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+# Drafts a GitHub release from the Conventional Commits since the previous tag. It only drafts: you read the notes,
+# edit them if needed and publish by hand. Publishing to Steam Workshop is a separate, manual step (se2publish).
+name: release
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          lfs: false
+      - name: Generate notes
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --draft --title "$TAG" --notes-file RELEASE_NOTES.md --verify-tag

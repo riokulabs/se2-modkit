@@ -1,0 +1,22 @@
+"""${name}'s hooks: the tables the se2-modkit pipeline reads (fracture plans, spark kinds, analogues and so on).
+
+`build_hooks()` builds them once and the pipeline takes the result as an argument; nothing reads them through import
+side effects. Fill the tables in it, e.g. `hooks.plans["panel"] = panel_plan`."""
+
+from pathlib import Path
+
+from se2modkit.pipeline import ModHooks
+from se2modkit.project import load_project
+
+from . import PREFIX
+
+HERE = Path(__file__).resolve().parent
+
+
+def build_hooks() -> ModHooks:
+    project = load_project(HERE)
+    mod = project.containing(HERE) or project.mod(None)
+    hooks = ModHooks.for_mod(mod)
+    assert hooks.prefix == PREFIX, (hooks.prefix, PREFIX)
+    hooks.check()
+    return hooks

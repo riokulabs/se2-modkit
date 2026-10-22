@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<title>Rioku Labs R4 maker mark, 40 mm</title>
+<desc>The R4 lab-flask mark simplified for a 40 mm decal on a 64 px atlas cell (1 unit = 1 px = 0.625 mm): flask
+outline, liquid with a ringed planet cut out of it, one spark. One colour; the atlas uses it as white with alpha.
+Source of truth for the Rioku atlas element r4_mark (kit/atlas/rioku.toml). Straight segments, circles and ellipses
+only, so the kit rasteriser (se2modkit.kit.svg) draws it exactly as a browser does.</desc>
+<defs>
+<mask id="planet" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+<rect x="0" y="0" width="64" height="64" fill="#fff"/>
+<g transform="translate(32 46.6) rotate(-14)">
+<!-- cut from the liquid, in order: ring, ring hole, planet with a 1 px gap round it, then the ring's front half
+     (gap, band, hole, planet) drawn again over the planet -->
+<ellipse cx="0" cy="0" rx="14.4" ry="4.7" fill="#000"/>
+<ellipse cx="0" cy="0" rx="11.4" ry="2.5" fill="#fff"/>
+<circle cx="0" cy="0" r="8" fill="#fff"/>
+<circle cx="0" cy="0" r="7" fill="#000"/>
+<path fill="#fff" d="M15.4 0 L15.27 0.74 L14.88 1.48 L14.23 2.18 L13.34 2.85 L12.22 3.47 L10.89 4.03 L9.37 4.52 L7.7 4.94 L5.89 5.27 L3.99 5.51 L2.01 5.65 L0 5.7 L-2.01 5.65 L-3.99 5.51 L-5.89 5.27 L-7.7 4.94 L-9.37 4.52 L-10.89 4.03 L-12.22 3.47 L-13.34 2.85 L-14.23 2.18 L-14.88 1.48 L-15.27 0.74 L-15.4 0Z"/>
+<path fill="#000" d="M14.4 0 L14.28 0.61 L13.91 1.22 L13.3 1.8 L12.47 2.35 L11.42 2.86 L10.18 3.32 L8.77 3.73 L7.2 4.07 L5.51 4.34 L3.73 4.54 L1.88 4.66 L0 4.7 L-1.88 4.66 L-3.73 4.54 L-5.51 4.34 L-7.2 4.07 L-8.77 3.73 L-10.18 3.32 L-11.42 2.86 L-12.47 2.35 L-13.3 1.8 L-13.91 1.22 L-14.28 0.61 L-14.4 0Z"/>
+<path fill="#fff" d="M11.4 0 L11.3 0.33 L11.01 0.65 L10.53 0.96 L9.87 1.25 L9.04 1.52 L8.06 1.77 L6.94 1.98 L5.7 2.17 L4.36 2.31 L2.95 2.41 L1.49 2.48 L0 2.5 L-1.49 2.48 L-2.95 2.41 L-4.36 2.31 L-5.7 2.17 L-6.94 1.98 L-8.06 1.77 L-9.04 1.52 L-9.87 1.25 L-10.53 0.96 L-11.01 0.65 L-11.3 0.33 L-11.4 0Z"/>
+<path fill="#000" d="M-6.94 0.91 L-7 0 L-6.97 -0.4 L6.97 -0.4 L7 0 L6.94 0.91 L6.9 1.12 L5.99 1.23 L4.62 1.34 L3.14 1.43 L1.59 1.48 L0 1.5 L-1.59 1.48 L-3.14 1.43 L-4.62 1.34 L-5.99 1.23 L-6.9 1.12Z"/>
+</g>
+</mask>
+</defs>
+<path id="flask" fill="#fff" fill-rule="evenodd" d="M22 3 L42 3 L43 4 L43 8 L39 8 L39 19 L60.4 56.3 L61 58.6 L60.2 60.4 L58.2 61 L5.8 61 L3.8 60.4 L3 58.6 L3.6 56.3 L25 19 L25 8 L21 8 L21 4Z M29 11 L35 11 L35 23 L36.68 23 L56.19 57 L7.81 57 L27.32 23 L29 23Z"/>
+<polygon id="spark" fill="#fff" points="36.4,24.4 37.5,28.3 40.2,29.4 37.5,30.5 36.4,34.4 35.3,30.5 32.6,29.4 35.3,28.3"/>
+<g mask="url(#planet)">
+<polygon id="liquid" fill="#fff" points="42.64,37 53.08,55.2 10.92,55.2 21.36,37"/>
+</g>
+</svg>

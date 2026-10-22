@@ -1,0 +1,24 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+name: Feature request
+description: Suggest a change or an addition
+labels: ["feature", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: Describe the problem first, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today
+    validations:
+      required: false

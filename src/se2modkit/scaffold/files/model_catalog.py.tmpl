@@ -1,0 +1,12 @@
+"""${name}'s blocks.
+
+`BUILDERS` maps a builder name to the function that makes a block's objects; `catalogue()` lists the blocks to build.
+Every modelled part needs a believable purpose for the block it sits on."""
+
+from collections.abc import Callable
+
+BUILDERS: dict[str, Callable] = {}
+
+
+def catalogue() -> list:
+    return []

@@ -1,0 +1,54 @@
+2026-10-20 03:06:23.026 - Main Thread ->  Timezone (local - UTC): -7h
+2026-10-20 03:06:23.030 - Main Thread ->  App Version: 4.0.0.3151
+2026-10-20 03:06:23.053 - Main Thread ->  Running application with arguments: -projectPaths:/srv/mods/Demo/Demo.vrgproj -loadScripts -nosplash
+2026-10-20 03:06:23.053 - Main Thread ->  Runtime Framework: .NET 10.0.12
+2026-10-20 03:06:23.056 - Main Thread ->  [Pulsar]: NOTE: Running with Pulsar plugin loader.
+2026-10-20 03:06:23.191 - Main Thread ->  [LinuxCompat] Loaded plugin.
+2026-10-20 03:06:24.000 - Main Thread ->  Pushing Core Configs
+{"$Bundles": {"Game2": "4.0.0.3151"},"$Type": "Game2:Some.ConfigObjectBuilder","$Value": {"Guid": "00000000-0000-0000-0000-000000000000"}}
+2026-10-20 03:06:24.004 - Main Thread ->  Info: Started loading definition set CoreConfigurations
+2026-10-20 03:06:24.434 - Main Thread ->  LOADING_TIME|PushCoreConfigurationsDefinitionSet|29.438
+2026-10-20 03:06:24.434 - Main Thread ->  Info: Finished loading definition set CoreConfigurations
+2026-10-20 03:06:24.505 - Main Thread ->  Initializing Engine...
+2026-10-20 03:06:24.656 - Main Thread ->  Initializing LibraryEngineComponent
+2026-10-20 03:06:25.012 - Main Thread ->  Initializing ProjectBasedDefinitionSetManagerComponent
+2026-10-20 03:06:31.448 - Main Thread ->  Info: Reading contentcache.vrb for mounted path b9b918fd-c83d-4ab4-af6d-4e72576e5dd2 (size: 5305)
+2026-10-20 03:06:32.574 - Main Thread ->  [Project Manager] Pushing Project Engine {"$Bundles": {}}
+2026-10-20 03:06:32.575 - Main Thread ->  [Project Manager] Pushing Project Vanilla {"$Bundles": {}}
+2026-10-20 03:06:32.575 - Main Thread ->  [Project Manager] Pushing Project Demo {"$Bundles": {}}
+2026-10-20 03:06:32.751 - Main Thread ->  Info: Started loading definition set Engine
+2026-10-20 03:06:33.403 - Main Thread ->  LOADING_TIME|PushEngineDefinitionSet|54.3679
+2026-10-20 03:06:33.403 - Main Thread ->  Info: Finished loading definition set Engine
+2026-10-20 03:06:33.881 - Main Thread ->  Initializing HavokPhysicsEngineComponent
+2026-10-20 03:06:34.146 - Main Thread ->  Initializing VoxelsEngineComponent
+2026-10-20 03:06:34.265 - Main Thread ->  LOADING_BEGIN|Render
+2026-10-20 03:06:35.314 - Render thread ->  LOADING_BEGIN|Render_Window
+2026-10-20 03:06:35.316 - Main Thread ->     LOADING_TIME|Render_Init|402.8366
+2026-10-20 03:06:35.316 - Main Thread ->     LOADING_TIME_FULL|Render_Init|1051.4912
+2026-10-20 03:06:35.775 - Main Thread ->  Info: Started loading definition set Core
+2026-10-20 03:06:40.835 - Main Thread ->  LOADING_TIME|PushCoreDefinitionSet|2203.3112
+2026-10-20 03:06:40.835 - Main Thread ->  Info: Finished loading definition set Core
+2026-10-20 03:06:47.318 - Render thread ->  LOADING_TIME|Render|7733.7586
+2026-10-20 03:06:49.571 - Main Thread ->  Warning: LOCALIZATION WARNING: Could not find key Plugins in the culture set en-US. Evaluating to string id.
+2026-10-20 03:06:55.104 - Main Thread ->  LOADING_TIME|Main|32082.2702
+2026-10-20 03:06:58.951 - Main Thread ->  LOADING_BEGIN|Session
+2026-10-20 03:06:59.122 - Main Thread ->  LOADING_BEGIN|WorldStartup
+2026-10-20 03:06:59.691 - Main Thread ->  Info: Started loading definition set World
+2026-10-20 03:07:22.275 - Main Thread ->  Warning: During definition validation of definition "Demo/Thing": a warning
+2026-10-20 03:07:22.300 - VRageWorker 3 ->  Error: During definition validation of definition "Keen.VRage.DCS.Definitions.EntityCompositeDefinition:fdd DemoMod/Data/Box": should not be on server compositions
+2026-10-20 03:07:28.207 - Main Thread ->  LOADING_TIME|PushWorldDefinitionSet|7592.4516
+2026-10-20 03:07:28.207 - Main Thread ->  Info: Finished loading definition set World
+2026-10-20 03:07:29.120 - Main Thread ->  LOADING_TIME|WorldStartup|29997.9451
+2026-10-20 03:07:33.238 - Main Thread ->  LOADING_BEGIN|EntitySpawning
+2026-10-20 03:08:29.794 - Main Thread ->  LOADING_TIME|EntitySpawning|56555.9402
+2026-10-20 03:08:30.100 - Main Thread ->  Exception occurred: System.InvalidOperationException: probe fault
+   at Demo.Thing.Update() in Demo.cs:line 12
+   at Keen.VRage.DCS.Scenes.Scene.Tick()
+2026-10-20 03:08:30.200 - Main Thread ->  End of NOT FATAL exception
+2026-10-20 03:09:01.398 - Main Thread ->  Warning: LOCALIZATION WARNING: Could not find key Demo Panel in the culture set en-US. Evaluating to string id.
+2026-10-20 03:09:07.489 - Main Thread ->  LOADING_TIME|GCMemoryTotal|2149424376
+2026-10-20 03:09:08.161 - Main Thread ->  LOADING_TIME|Session|129210.3109
+2026-10-20 03:09:10.000 - Main Thread ->  Assertion failed: InventorySlotsServerComponent index
+   at Keen.VRage.Library.Diagnostics.Assert.FailInternal[T](String message)
+2026-10-20 03:09:12.000 - Main Thread ->  Info: [Saving] Finished save Demo World: Success
+2026-10-20 03:12:12.000 - Main Thread ->  Info: idle line much later

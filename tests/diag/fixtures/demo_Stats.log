@@ -1,0 +1,12 @@
+Process Memory: 5.28GiB
+GC: 1.52GiB
+  GC Total: 1.52GiB
+  GC Total Pause Duration: 500.28ms
+  GC Collection Count 0: 7
+Native Allocators: 636.35MiB
+  Heap Allocation Count: unavailable
+Cable Trays: Empty: 3
+Performance:
+  Main Thread:
+    Draw: 2.50ms
+  CPU Load: 12.5%

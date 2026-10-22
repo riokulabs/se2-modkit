@@ -1,0 +1,15 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.bat text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff2 binary
+*.zip binary
+

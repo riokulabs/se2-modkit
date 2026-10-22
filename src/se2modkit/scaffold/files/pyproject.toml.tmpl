@@ -1,0 +1,16 @@
+# Tooling manifest: this mod is not a published package; the file pins se2-modkit and holds the mod's modkit config.
+[project]
+name = "se2-${dist}-tooling"
+version = "0"
+requires-python = ">=3.11"
+dependencies = ["${modkit_pin}"]
+
+[tool.se2modkit]
+mod_name = ${name_toml}
+profile = "${profile}"
+prefix = "${prefix}"
+gates = ${gates}   # the shared checks Tests/test_gates.py runs (se2modkit.testing.gates)
+
+[tool.pytest.ini_options]
+testpaths = ["Tests"]
+addopts = "--import-mode=importlib"

@@ -1,0 +1,32 @@
+# The industrial style profile: vanilla plus stricter rules (plate rows, deck rhythm, signage sizes, matte finish).
+# Everything not set here is inherited from vanilla. docs/style-guide/profiles/industrial.md cites each key.
+extends = "vanilla"
+name = "Industrial"
+
+[geometry]
+plate_row = 0.625               # m, a quarter cell
+deck_height = 2.5               # m, one cell
+service_deck = 5.0              # m, two cells
+
+[ergonomics]
+grab_bar_z = 1.05               # m above the deck
+grab_bar_standoff = 0.08        # m
+
+[stencil]
+id_h = 0.06                     # m cap height: block ID and maker code
+deck_h = 0.30                   # m: deck numbers
+haz_h = 0.10                    # m: hazard words
+
+[hazard]
+max_share = 0.04
+max_share_drives_guns = 0.08
+
+[finish]
+chrome_only_on = ["pin", "rail", "ram"]
+decorative_emissive = false
+
+[checks]
+extra = ["faction_parity", "orientation", "rationale_coverage", "hazard_tags"]
+
+[atlas]
+extra = ["rioku"]               # the Rioku emblem and signage atlas (kit/atlas/rioku.toml)

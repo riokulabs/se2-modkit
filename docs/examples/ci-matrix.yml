@@ -1,0 +1,80 @@
+# Example: per-mod CI for a multi-mod repo (one job per mod, then the cross-mod checks).
+# Copy into .github/workflows/ and adapt. Hosted runners have no game, SDK or Blender, so only offline tests run.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  mods:
+    runs-on: ubuntu-latest
+    outputs:
+      names: ${{ steps.list.outputs.names }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - id: list
+        name: List the mods declared in pyproject.toml
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, tomllib
+          table = tomllib.load(open("pyproject.toml", "rb"))["tool"]["se2modkit"]
+          names = list(table["mods"]) if "mods" in table else [table["mod_name"]]
+          print("names=" + json.dumps(names))
+          PY
+
+  test:
+    needs: mods
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12"]
+        mod: ${{ fromJSON(needs.mods.outputs.names) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install the pinned se2-modkit from pyproject.toml
+        shell: bash
+        run: |
+          python -c "import tomllib; deps = tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']; open('tooling-requirements.txt', 'w').write(''.join(d + chr(10) for d in deps))"
+          pip install pytest pytest-xdist -r tooling-requirements.txt
+      - name: Offline tests of ${{ matrix.mod }}
+        run: se2mod test "${{ matrix.mod }}" --fast
+      - name: Style check of ${{ matrix.mod }}
+        run: se2mod style check "${{ matrix.mod }}" --warn-only
+
+  cross-mod:
+    # Checks across the whole series (shared core dependency, no duplicate GUIDs or prefixes) run once, after the
+    # per-mod jobs. Add them here as modkit grows them.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the pinned se2-modkit from pyproject.toml
+        run: |
+          python -c "import tomllib; deps = tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']; open('tooling-requirements.txt', 'w').write(''.join(d + chr(10) for d in deps))"
+          pip install -r tooling-requirements.txt
+      - name: Every mod has its own prefix
+        run: |
+          python - <<'PY'
+          import tomllib
+          table = tomllib.load(open("pyproject.toml", "rb"))["tool"]["se2modkit"]
+          mods = table.get("mods") or {}
+          prefixes = [m.get("prefix", table.get("prefix", "")) for m in mods.values()]
+          dupes = sorted({p for p in prefixes if prefixes.count(p) > 1})
+          assert not dupes, f"prefix used by more than one mod: {dupes}"
+          PY

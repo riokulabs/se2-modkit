@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+
+# private leak-gate terms (tests/test_no_leaks.py)
+tests/.leak-terms.local

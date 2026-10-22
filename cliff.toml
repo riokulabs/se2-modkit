@@ -1,0 +1,48 @@
+# managed by riokulabs/.github - edit there (templates/), not here
+# git-cliff configuration (https://git-cliff.org/docs/configuration).
+# Output follows Keep a Changelog, as in CHANGELOG.md, and keeps "## [x.y.z] - date" headings so that
+# tools that read CHANGELOG.md sections (for example se2publish) keep working.
+
+[changelog]
+header = '''
+# Changelog
+
+All notable changes to se2-modkit are listed here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+'''
+body = '''
+{% if version %}## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}{% else %}## [Unreleased]{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+
+{% for commit in commits -%}
+- {{ commit.message | split(pat="\n") | first | upper_first }}
+{% endfor %}
+{% endfor %}
+'''
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = false
+filter_commits = false
+topo_order = false
+sort_commits = "oldest"
+tag_pattern = "v[0-9].*"
+commit_preprocessors = [
+  { pattern = '\s*\(#\d+\)$', replace = "" },
+]
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Changed" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^revert", group = "Removed" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^(test|build|ci|chore|style)", skip = true },
+]

@@ -1,0 +1,18 @@
+"""Smoke test: the mod's project, its model package and the modkit config agree."""
+
+from pathlib import Path
+
+import ${pkg}
+from ${pkg} import catalog, hooks
+from se2modkit.project import load_project
+
+MOD_ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_smoke():
+    mod = load_project(MOD_ROOT).containing(MOD_ROOT)
+    assert mod is not None and mod.name == ${name_py}
+    built = hooks.build_hooks()
+    assert mod.prefix == ${pkg}.PREFIX == (built["prefix"] if isinstance(built, dict) else built.prefix)
+    assert (MOD_ROOT / ${vrgproj_py}).is_file()
+    assert isinstance(catalog.BUILDERS, dict) and catalog.catalogue() == []

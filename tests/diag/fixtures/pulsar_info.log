@@ -1,0 +1,10 @@
+2026-10-20 03:05:43.0000 [INFO] (1) Starting Pulsar v2.4.3
+2026-10-20 03:05:43.0500 [INFO] (1) Platform: Linux
+2026-10-20 03:05:44.0000 [INFO] (1) Checking version of SpaceGT/Pulsar
+2026-10-20 03:05:44.5000 [INFO] (1) Enabled Plugins: DemoPlugin (DemoPlugin.dll), SeMcp2 (24B77A03-E6BD-4849-809F-4E73CEB99B1A)
+2026-10-20 03:05:45.0000 [INFO] (1) Downloading https://api.github.com/repos/Example/linux-compat2/zipball/abc
+2026-10-20 03:05:52.0000 [INFO] (1) Using publicized Game2.Client for LinuxCompat-1
+2026-10-20 03:05:55.0000 [INFO] (1) Using publicized VRage.Core for LinuxCompat-1
+2026-10-20 03:06:00.0000 [ERROR] (1) Failed to build LinuxCompat (linux-compat):
+2026-10-20 03:06:00.0000 [ERROR] (1) CS0535: 'X' does not implement interface member 'Y'
+2026-10-20 03:06:20.0000 [INFO] (1) Initialized 3 of 4 plugins
