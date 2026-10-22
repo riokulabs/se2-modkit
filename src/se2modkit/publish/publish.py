@@ -95,6 +95,7 @@ class Plan:
     warnings: list[str]
     stage: StageResult | None
     bundles: dict[str, str]
+    release_version: str | None = None   # --version: what the git tag and GitHub release are for
 
     @property
     def ready(self) -> bool:
@@ -167,7 +168,8 @@ def assemble(p: ModProject, cfg: PublishConfig, *, version: str | None, visibili
         warnings += stage.warnings
         if not stage.scripts:
             warnings.append("no committed Scripts/*.cs: this publish is data-only")
-    return Plan(p, cfg, decision, vis, meta_vis, description, note, blockers, warnings, stage, bundles)
+    return Plan(p, cfg, decision, vis, meta_vis, description, note, blockers, warnings, stage, bundles,
+                release_version=version)
 
 
 def metadata_for(plan: Plan, item_id: int, author: int, visibility: str, now: str | None = None) -> str:
@@ -242,6 +244,13 @@ def render_plan(plan: Plan, out=print, full: bool = False) -> list[tuple[str, ob
             "and append to " + "docs/workshop/publish-ledger.jsonl")
     else:
         out("  then: append to docs/workshop/publish-ledger.jsonl")
+    from .release import plan_lines, plan_release
+    try:
+        rel, why = plan_release(p, cfg, plan.release_version, plan.stage.head if plan.stage else "HEAD", item)
+        for ln in plan_lines(rel, why):
+            out("  " + ln)
+    except Exception as e:  # the plan still prints; a real upload reports the same problem after uploading
+        out(f"  then: git tag and GitHub release cannot be planned: {e}")
     for w in plan.warnings:
         out(f"WARNING: {w}")
     for b in plan.blockers:

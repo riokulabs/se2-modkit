@@ -176,3 +176,13 @@ def test_no_upload_without_approval_multi_mod(pack, monkeypatch, capsys):
     assert rc == 2 and "interactive terminal" in cap.err and "Scripts/Core.cs" in cap.out
     # nothing written into the repo
     assert git(pack, "status", "--porcelain") == ""
+
+
+def test_multi_mod_release_tag_and_title(pack):
+    from se2modkit.publish.release import plan_release
+    p = select_mod(pack, None, "Core-v1.2.0")
+    rel, why = plan_release(p, load_config(p), "Core-v1.2.0", "c" * 40, 3900000001)
+    assert rel is not None, why
+    assert rel.tag == "Core-v1.2.0" and rel.repo == pack and rel.title == "Core 1.2.0"
+    assert rel.tag_message == "Core by Rioku Labs 1.2.0" and "Core **pipes**" in rel.notes
+    assert "root entry" not in rel.notes

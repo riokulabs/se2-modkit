@@ -32,7 +32,30 @@ game or SDK update (see "When the game updates").
   -> plan: every ISteamUGC call with its values (DRY RUN, the default)
   -> real upload only with --i-have-user-approval + typed confirmation, through the logged-in Steam client
   -> ledger entry in the mod folder (item id, version, commit, manifest hash)
+  -> with --version: annotated release tag at the published commit, pushed to origin, and its GitHub release
 ```
+
+### Git tag and GitHub release
+
+After a successful upload with `--version`, the tool tags the commit it published and pushes the tag to the mod
+repo's `origin`. The tag is `vX.Y.Z` (`<Name>-vX.Y.Z` in a multi-mod repo) and its message is "<title> X.Y.Z". Then
+it publishes the GitHub release for that tag with the `gh` CLI:
+
+- title: "<release_title> X.Y.Z";
+- notes: the CHANGELOG section for the version in full, "For modders" included (GitHub readers are modders; only
+  the Steam change note leaves sections out), then a `**Steam Workshop:**` link to the item;
+- published, not a draft, and marked latest.
+
+If a release for the tag already exists, draft or not (the repo's release workflow drafts one when a tag is pushed),
+it is edited with the same title and notes and published. Otherwise it is created.
+
+- An existing tag at the published commit is reused. A tag at a different commit is never moved: the tag and the
+  release are skipped with a warning.
+- With no `--version`, or with `github_release = false`, the step is skipped and the tool says why.
+- The upload is done by the time this runs, so nothing here fails the publish. If `gh` is missing or not signed in,
+  or a push fails, the tool prints a warning and the exact commands to finish by hand, and still exits 0.
+
+The dry run lists both steps (`then: tag v0.9.0 at <sha> and push it to origin`, `then: publish GitHub release ...`).
 
 ## Install
 
@@ -71,6 +94,8 @@ thumbnail = "docs/workshop/thumb.jpg"
 first_visibility = "Unlisted"             # first upload only
 change_note_skip_sections = ["For modders", "Documentation", "Development"]   # CHANGELOG ### subsections left out of the change note (case-insensitive; [] keeps all)
 dependencies = []                         # Workshop item ids this mod requires (Keen metadata "Dependencies")
+release_title = "Demo Mod"                # GitHub release title before the version (default: the mod folder name)
+github_release = true                     # tag the published commit and publish its GitHub release (default true)
 ```
 
 All paths are relative to the mod's folder. `dependencies` fills `BaseMetadata.Dependencies` with
@@ -232,7 +257,8 @@ not know the item. Merge (or fast-forward the canonical checkout), then publish 
 4. **Accept the Steam Workshop legal agreement yourself** (it is account-wide; Steam hides items until you do). The
    tool never accepts anything; it only reports Steam's "needs to accept" flag.
 5. Publish **Unlisted** (the default for a first upload). Close SE2 and the HUB first.
-6. Commit the `.vrgproj` (now with `ModId`) and `docs/workshop/publish-ledger.jsonl`.
+6. Commit the `.vrgproj` (now with `ModId`) and `docs/workshop/publish-ledger.jsonl`. Check that the tool
+   pushed the release tag and published the GitHub release; if it printed a warning, run the commands it listed.
 7. **Test with a second Steam account** (or a friend): subscribe to the unlisted item, unload/remove the local
    same-GUID project (`mods/<Mod>` must not be loaded at the same time), start a fresh world, test data-only and with
    `-loadScripts`.
