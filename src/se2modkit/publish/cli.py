@@ -15,7 +15,7 @@ from ..env.config import ConfigError
 from ..env.core import EnvError, SE2Env, discover_env
 from ..release import publish_check
 from . import __version__, gitutil, limits
-from .hostenv import GAME_APP_ID, build_env, find_libsteam_api, game_version, hub_bundles
+from .hostenv import GAME_APP_ID, build_env, find_libsteam_api, hub_bundles
 from .project import Refusal, check_canonical, load_config, read_ledger, read_tracked, select_mod
 from .publish import assemble, execute, preflight_live, render_plan
 from .stage import Limits, StageResult, check_tree, collect_head_scripts, stage
@@ -124,7 +124,7 @@ def cmd_publish(args) -> int:
     plan = assemble(p, cfg, version=args.version, visibility=args.visibility, adopt_existing=args.adopt_existing,
                     change_note_file=Path(args.change_note_file) if args.change_note_file else None,
                     keep_web_description=args.keep_web_description, stage=st, bundles=hub_bundles(env),
-                    strict_git=real, game_version=game_version(env))
+                    strict_git=real)
     plan.warnings[:0] = notes
     if stage_error:
         plan.blockers.insert(0, "staging failed: " + stage_error)

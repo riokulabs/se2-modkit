@@ -22,7 +22,7 @@ def make_plan(mod, tmp_path, **kw):
     st = finish_stage(p, fake_builder_output(mod, tmp_path / "stage"), read_tracked(p, cfg.thumbnail), git(mod, "rev-parse", "HEAD").strip(),
                       Limits())
     args = dict(version=None, visibility=None, adopt_existing=False, change_note_file=None,
-                keep_web_description=False, stage=st, bundles=BUNDLES, strict_git=True, game_version="4.0.0.3151")
+                keep_web_description=False, stage=st, bundles=BUNDLES, strict_git=True)
     args.update(kw)
     return assemble(p, cfg, **args)
 
@@ -106,7 +106,7 @@ def test_dry_run_prints_every_call_and_the_exact_change_note(mod, tmp_path):
     assert dict(calls)["SetItemTags"] == ["ModTagBlock", "UGCModTypeTag"]
     for ln in plan.change_note.text.split("\n"):
         assert f"      | {ln}" in out
-    assert plan.change_note.text.startswith("v1.1.0 - 2026-10-20 - game 4.0.0.3151")
+    assert plan.change_note.text.startswith("v1.1.0 - 2026-10-20")
     assert "READY FOR UPLOAD: yes" in out
 
 
