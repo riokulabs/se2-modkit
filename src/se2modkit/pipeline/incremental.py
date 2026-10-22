@@ -665,7 +665,8 @@ def stale_reasons(inputs: Mapping[str, str], fragment: dict | None) -> list[str]
 #   * read while a block builds with any other frame on that path (a helper, even one in the builder's file, a shared
 #     module, a cache, a wrapper around the builder, a shared helper the builder called back into itself through,
 #     code compiled from a string, another library helper), or by the catalogue, hooks, and
-#     code a block loads lazily (a module first imported while a block builds, by import event so a .pyc load counts,
+#     code a block loads lazily (a module first imported while a block builds, by import event or by the open of its
+#     source; opening its cached .pyc counts as reading the source, so `importlib.import_module` from the cache counts,
 #     and the files its module-level code reads while it is being imported): that block and every block the process
 #     builds after it, which may use what was read without reading it again (`lazy_imports`);
 #   * read outside any block (import time, the catalogue, hooks): every block (`process_reads`).
@@ -933,6 +934,18 @@ def _from_import_system() -> bool:
     return f is not None and _import_machinery(f.f_code.co_filename)
 
 
+def _source_of_bytecode(path: str) -> str:
+    """The source file a cached .pyc belongs to (a module loaded from its cache opens no .py, and
+    `importlib.import_module` raises no import event), else `path` itself."""
+    if not path.endswith((".pyc", ".pyo")):
+        return path
+    try:
+        import importlib.util
+        return importlib.util.source_from_cache(path)
+    except (ValueError, NotImplementedError):
+        return path
+
+
 def _audit(event, args):
     if _PAUSED[0]:
         return
@@ -951,7 +964,7 @@ def _audit(event, args):
                     mode is None and isinstance(flags, int) and flags & _WRITE_FLAGS):    # "r+" still reads
                 _wrote(p)
                 return
-            _note(p)
+            _note(_source_of_bytecode(p))
         elif event == "os.rename":           # os.rename and os.replace (an atomic write lands here)
             if len(args) > 1 and not isinstance(args[1], int):
                 _wrote(os.path.abspath(os.fsdecode(args[1])))
