@@ -123,7 +123,10 @@ def test_a_real_upload_is_refused_before_staging(modeled, monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("must refuse before asking"))
     assert cli.main(["publish", str(modeled), "--i-have-user-approval"]) == 3
     err = capsys.readouterr().err
-    assert err.startswith("REFUSED: TestMod has no release build") and "se2mod build-models TestMod --release" in err
+    refusal = [ln for ln in err.splitlines() if not ln.startswith("[")]    # skip the progress lines
+    assert refusal[0].startswith("REFUSED: TestMod has no release build")
+    assert "se2mod build-models TestMod --release" in err
+    assert "staging" not in err                                             # refused before staging began
 
 
 def test_with_a_release_build_the_other_gates_still_apply(modeled, monkeypatch, capsys):

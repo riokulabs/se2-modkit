@@ -24,6 +24,7 @@ from pathlib import Path
 
 from .hostenv import TEXCONV, BuildEnv, find_processes
 from .project import Refusal
+from . import progress
 
 
 def win_path(p: Path) -> str:
@@ -103,8 +104,14 @@ def run_builder(env: BuildEnv, project_file: Path, stage_dir: Path, log: Path, *
         lf.flush()
         p = subprocess.Popen(argv, cwd=cwd, env=proc_env, stdout=lf, stderr=subprocess.STDOUT,
                              start_new_session=True)
+        beat = progress.Heartbeat("SDK builder", log)
         try:
-            rc = p.wait(timeout=timeout)
+            deadline = time.monotonic() + timeout
+            while (rc := p.poll()) is None:
+                if time.monotonic() > deadline:
+                    raise subprocess.TimeoutExpired(argv, timeout)
+                beat.tick()
+                time.sleep(1)
         except subprocess.TimeoutExpired:
             os.killpg(p.pid, signal.SIGKILL)
             p.wait(timeout=30)

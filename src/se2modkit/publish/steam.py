@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .metadata import KV_TAG_KEY, STEAM_VISIBILITY
+from . import progress
 
 NEW_ITEM = 0   # placeholder id in a dry run before CreateItem
 
@@ -276,7 +277,9 @@ class FlatApiBackend:
         L = self.lib
         deadline = time.monotonic() + self.timeout
         msg = _CallbackMsg()
+        beat = progress.Heartbeat(f"waiting for Steam (callback {cb_id})")
         while time.monotonic() < deadline:
+            beat.tick()
             L.SteamAPI_ManualDispatch_RunFrame(self.pipe)
             while L.SteamAPI_ManualDispatch_GetNextCallback(self.pipe, ctypes.byref(msg)):
                 try:
