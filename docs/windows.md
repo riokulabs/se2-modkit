@@ -23,7 +23,7 @@ are expected to work, which are untested, and holds the manual checklist.
 | `se2mod play`, `play --native` | Steam launch; Pulsar has no default location on Windows (set `SE2_PULSAR` or config `pulsar`) |
 | `se2mod off` / `on` | Junction creation and removal, and permissions |
 | `se2mod sdk standin` | Whether Windows needs it at all |
-| `se2diag` | Linux only |
+| `se2diag` | Log, Pulsar and in-game probe commands; host sampling and the game process lookup read `/proc` and are Linux only |
 | `se2mod publish` | Steamworks library lookup (`SE2_LIBSTEAM_API`) |
 
 ## Windows manual pass (to be filled in by the maintainer)
