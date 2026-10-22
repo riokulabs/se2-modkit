@@ -20,6 +20,7 @@ from .project import (ModProject, PublishConfig, Refusal, append_ledger, differs
                       ledger_item_ids, read_ledger, read_tracked, repo_rel, split_release_tag, write_mod_id)
 from .stage import StageResult, dirty_shipping_inputs
 from .steam import NEW_ITEM, Backend, DryRunBackend, plan_update
+from . import progress
 
 PLACEHOLDER_STEAM_ID = 0
 
@@ -266,6 +267,7 @@ def execute(plan: Plan, backend: Backend, *, adopt_existing: bool, out=print, no
     ours = ledger_item_ids(ledger)
     kv = guid_to_steam_kv(p.guid)
     me = backend.steam_id()
+    progress.log("looking for an existing Workshop item for this mod")
     remote = backend.find_by_project_kv(kv)
     check_remote(plan.decision, remote, me, adopt_existing, ours)
     stage_dir = plan.stage.stage_dir
@@ -279,6 +281,7 @@ def execute(plan: Plan, backend: Backend, *, adopt_existing: bool, out=print, no
             meta_vis = cur.visibility
     common = {"tool": __version__, "commit": plan.stage.head, "project_guid": p.guid}
     if item is None:
+        progress.log("creating the Workshop item")
         item, legal = backend.create_item(GAME_APP_ID)
         append_ledger(p, {**common, "event": "created", "item_id": item, "time": _utc()})
         out(f"created Workshop item {item}")
@@ -288,6 +291,7 @@ def execute(plan: Plan, backend: Backend, *, adopt_existing: bool, out=print, no
     meta = metadata_for(plan, item, me, meta_vis, now)
     up = plan_update(item, kv, plan.config.title, hub_tags(plan.config.tags), plan.visibility, plan.description,
                      stage_dir, stage_dir / "thumb.jpg", meta, plan.change_note.text)
+    progress.log(f"sending content, preview, description and change note to item {item}")
     legal = backend.update_item(GAME_APP_ID, item, up.calls, up.change_note)
     # Re-hash: the staged .vrgproj may have just gained the ModId.
     from .stage import Limits, check_tree

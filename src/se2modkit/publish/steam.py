@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .metadata import KV_TAG_KEY, STEAM_VISIBILITY
+from . import progress
 
 NEW_ITEM = 0   # placeholder id in a dry run before CreateItem
 
@@ -208,8 +209,6 @@ class FlatApiBackend:
         os.environ["SteamGameId"] = str(app_id)
         self.lib = ctypes.CDLL(str(lib_path))
         L = self.lib
-        L.SteamAPI_ManualDispatch_Init.restype = None
-        L.SteamAPI_ManualDispatch_Init()
         err = ctypes.create_string_buffer(1024)
         L.SteamAPI_InitFlat.argtypes = [ctypes.c_char_p]
         L.SteamAPI_InitFlat.restype = ctypes.c_int
@@ -217,6 +216,10 @@ class FlatApiBackend:
         if rc != 0:
             raise SteamFailure(f"SteamAPI_InitFlat failed ({rc}): {err.value.decode(errors='replace')} - is the "
                                "Steam client running and logged in?")
+        # Manual dispatch has to be switched on after the API is initialized, or every
+        # RunFrame/GetNextCallback fails with "must call SteamAPI_ManualDispatch_Init first".
+        L.SteamAPI_ManualDispatch_Init.restype = None
+        L.SteamAPI_ManualDispatch_Init()
         L.SteamAPI_GetHSteamPipe.restype = ctypes.c_int32
         self.pipe = L.SteamAPI_GetHSteamPipe()
         self.ugc = self._iface("SteamAPI_SteamUGC_v021", "SteamAPI_SteamUGC_v020", "SteamAPI_SteamUGC_v018")
@@ -274,7 +277,9 @@ class FlatApiBackend:
         L = self.lib
         deadline = time.monotonic() + self.timeout
         msg = _CallbackMsg()
+        beat = progress.Heartbeat(f"waiting for Steam (callback {cb_id})")
         while time.monotonic() < deadline:
+            beat.tick()
             L.SteamAPI_ManualDispatch_RunFrame(self.pipe)
             while L.SteamAPI_ManualDispatch_GetNextCallback(self.pipe, ctypes.byref(msg)):
                 try:

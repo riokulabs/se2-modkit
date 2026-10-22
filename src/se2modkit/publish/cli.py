@@ -19,6 +19,7 @@ from .hostenv import GAME_APP_ID, build_env, find_libsteam_api, hub_bundles
 from .project import Refusal, check_canonical, load_config, read_ledger, read_tracked, select_mod
 from .publish import assemble, execute, preflight_live, render_plan
 from .stage import Limits, StageResult, check_tree, collect_head_scripts, stage
+from . import progress
 
 
 def discover() -> SE2Env:
@@ -104,11 +105,13 @@ def cmd_stage(args) -> int:
 
 
 def cmd_publish(args) -> int:
-    env = discover()
-    p = project_for(args, env)
-    notes = check_canonical(p)
-    cfg = load_config(p)
     real = args.i_have_user_approval
+    progress.log(f"{'publish' if real else 'dry run'}: {args.mod} {args.version or ''}".rstrip())
+    with progress.step("reading the mod and finding the game and SDK"):
+        env = discover()
+        p = project_for(args, env)
+        notes = check_canonical(p)
+        cfg = load_config(p)
     # what ships must come from a release build of this very commit (`se2mod build-models MOD --release`)
     release_issue, release_note = publish_check(p.folder)
     if release_issue and real:
@@ -116,11 +119,13 @@ def cmd_publish(args) -> int:
     st, stage_error = None, None
     if not args.no_stage:
         try:
-            st = do_stage(args, p, cfg, env)
+            with progress.step("staging: SDK build and package checks (several minutes)"):
+                st = do_stage(args, p, cfg, env)
         except Refusal as e:
             if real:
                 raise
             stage_error = str(e)          # a dry run still prints the rest of the plan
+    progress.log("assembling the upload plan")
     plan = assemble(p, cfg, version=args.version, visibility=args.visibility, adopt_existing=args.adopt_existing,
                     change_note_file=Path(args.change_note_file) if args.change_note_file else None,
                     keep_web_description=args.keep_web_description, stage=st, bundles=hub_bundles(env),
@@ -150,18 +155,22 @@ def cmd_publish(args) -> int:
     if not sys.stdin.isatty():
         print("refusing: the confirmation must be typed at an interactive terminal", file=sys.stderr)
         return 2
+    progress.log("waiting for your confirmation")
     answer = input(f"\nThis is an UNOFFICIAL upload outside Keen's Mod HUB. Type '{p.name}' to upload: ")
     if answer.strip() != p.name:
         print("not confirmed; nothing was sent")
         return 2
-    preflight_live(args.allow_running_game)
+    with progress.step("checking the game is closed"):
+        preflight_live(args.allow_running_game)
     lib = find_libsteam_api(env)
     if lib is None:
         raise Refusal("no libsteam_api.so found (set SE2_LIBSTEAM_API to a Steamworks redistributable)")
     from .steam import FlatApiBackend
-    backend = FlatApiBackend(lib, GAME_APP_ID)
+    with progress.step("connecting to Steam"):
+        backend = FlatApiBackend(lib, GAME_APP_ID)
     try:
-        execute(plan, backend, adopt_existing=args.adopt_existing)
+        with progress.step("uploading to the Workshop"):
+            execute(plan, backend, adopt_existing=args.adopt_existing)
     finally:
         backend.close()
     return 0
