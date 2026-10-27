@@ -13,6 +13,7 @@ its first argument; the files staged in this run are tracked on that registry (`
                             every "Bundle:Type" name resolves through the file's own $Bundles
   model_asset / subpart_model_asset / stage_models / stage_subpart_model
                             the .model assets (LOD FBX + collision; a subpart's without collision unless given one)
+  unlock_model_limits       processor settings in every .model.meta under a folder that accept Keen's model limits
   dummy / put_dummy / quat_axis_angle / quat_from_matrix / euler_hint / rot_apply
                             BlockModelDefinition dummies
   breakable_definition / ensure_breakable
@@ -26,7 +27,7 @@ from __future__ import annotations
 import math
 import os
 import shutil
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -41,6 +42,14 @@ if TYPE_CHECKING:
     from ..pipeline.hooks import ModHooks
 
 MODEL_TYPE = "VRage:Keen.VRage.ContentPipeline.Models.ModelAssetData"
+MODEL_SETTINGS_TYPE = "VRage:Keen.VRage.ContentPipeline.Models.ModelAssetSettings"
+PROCESSOR_SETTINGS_TYPE = ("VRage:Keen.VRage.ContentPipeline.Project.Features.AssetProcessing."
+                           "ProcessorSettingsMetadataItem")
+# The default of unlock_model_limits: Keen's triangle, material and mesh-part limits are accepted, the limits on
+# colliders, fractures and the LOD count stay.
+MODEL_UNLOCKS = {"UnlockLOD0TriangleLimits": True, "UnlockAllLODTriangleLimits": True,
+                 "UnlockHigherLODMaterialLimits": True, "UnlockMaterialLimits": True, "UnlockMeshPartLimits": True,
+                 "UnlockColliderLimits": False, "UnlockFracturesLimits": False, "UnlockLODCountLimits": False}
 
 
 def reset(hooks: ModHooks, env: SE2Env | None = None) -> None:
@@ -279,6 +288,31 @@ def stage_subpart_model(hooks: ModHooks, spec, man: dict, kind: str, G: Guids) -
     write_asset(stage_path(hooks, mrel), subpart_model_asset(hooks, geom))
     stage_meta(hooks, mrel, G[mrel])
     return G[mrel], len(geom)
+
+
+def unlock_model_limits(root: Path, unlocks: Mapping[str, bool] | None = None) -> list[str]:
+    """Give every `*.model.meta` under `root` the processor settings that accept Keen's model limits: the SDK reports
+    a model over a limit (triangles, materials, mesh parts) as a warning and stops before its cache pass otherwise,
+    as vanilla's own over-limit models are let through. `unlocks` maps the `ModelAssetSettings` flags to True
+    (accept that limit) or False (keep it), written as given; the default is `MODEL_UNLOCKS`. The metas' other items
+    stay. Returns the metas changed (a posix path each); one that already has these settings is left alone."""
+    unlocks = dict(MODEL_UNLOCKS if unlocks is None else unlocks)
+    bad = sorted(k for k, v in unlocks.items() if not isinstance(v, bool))
+    if bad:
+        raise ValueError(f"unlock_model_limits: {', '.join(bad)} must be True or False.")
+    want = {"$Type": PROCESSOR_SETTINGS_TYPE,
+            "Settings": {MODEL_SETTINGS_TYPE: {"$Type": MODEL_SETTINGS_TYPE, **unlocks}}}
+    out = []
+    for m in sorted(Path(root).rglob("*.model.meta")):
+        d = read_asset(m)
+        items = d["$Value"].setdefault("InternalItems", [])
+        have = [i for i in items if i.get("$Type") == PROCESSOR_SETTINGS_TYPE]
+        if have and have[0] == want:
+            continue
+        d["$Value"]["InternalItems"] = [i for i in items if i.get("$Type") != PROCESSOR_SETTINGS_TYPE] + [want]
+        write_asset(m, d)
+        out.append(m.as_posix())
+    return out
 
 
 # ------------------------------------------------------------------------------------------------ dummies

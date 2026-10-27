@@ -350,3 +350,50 @@ def test_reset_checks_the_hooks(tmp_path):
     bad.plans["box"] = "not callable"
     with pytest.raises(HooksError, match=r"plans\['box'\]"):
         stage.reset(bad)
+
+
+# ------------------------------------------------------------------------------------------------ model limits
+SETTINGS = stage.PROCESSOR_SETTINGS_TYPE
+PROCESSING = "VRage:Keen.VRage.ContentPipeline.Project.Features.AssetProcessing.AssetProcessingMetaDataItem"
+
+
+def _model_meta(path, items=None):
+    """A .model.meta as the SDK leaves it: the AssetID and its processing items."""
+    return write(path, {"$Bundles": OLD, "$Type": "VRage:Keen.VRage.ContentPipeline.Metafiles.MetaData",
+                        "$Value": {"AssetID": BDEF, "InternalItems": [] if items is None else items}})
+
+
+def _settings(meta):
+    (item,) = [i for i in read(meta)["$Value"]["InternalItems"] if i["$Type"] == SETTINGS]
+    return item["Settings"][stage.MODEL_SETTINGS_TYPE]
+
+
+def test_unlock_model_limits_writes_the_default_into_every_model_meta(tmp_path):
+    a = _model_meta(tmp_path / "A" / "Models" / "A_Fractured.model.meta")
+    b = _model_meta(tmp_path / "B" / "B.model.meta", [{"$Type": PROCESSING, "Problems": ["too many triangles"]}])
+    other = write(tmp_path / "A" / "A_Block.partialdef.meta", {"$Value": {"InternalItems": []}})
+    changed = stage.unlock_model_limits(tmp_path)
+    assert changed == [a.as_posix(), b.as_posix()]
+    for m in (a, b):
+        got = _settings(m)
+        assert got == {"$Type": stage.MODEL_SETTINGS_TYPE, **stage.MODEL_UNLOCKS}
+        assert got["UnlockMeshPartLimits"] is True and got["UnlockLODCountLimits"] is False
+    assert read(b)["$Value"]["InternalItems"][0] == {"$Type": PROCESSING, "Problems": ["too many triangles"]}
+    assert read(a)["$Value"]["AssetID"] == BDEF and read(other) == {"$Value": {"InternalItems": []}}
+
+
+def test_unlock_model_limits_takes_the_settings_and_leaves_a_current_meta_alone(tmp_path):
+    m = _model_meta(tmp_path / "M.model.meta")
+    assert stage.unlock_model_limits(tmp_path, {"UnlockColliderLimits": True}) == [m.as_posix()]
+    assert _settings(m) == {"$Type": stage.MODEL_SETTINGS_TYPE, "UnlockColliderLimits": True}
+    before = m.read_bytes()
+    assert stage.unlock_model_limits(tmp_path, {"UnlockColliderLimits": True}) == [] and m.read_bytes() == before
+    assert stage.unlock_model_limits(tmp_path) == [m.as_posix()]       # other settings replace the item, never pile up
+    assert _settings(m) == {"$Type": stage.MODEL_SETTINGS_TYPE, **stage.MODEL_UNLOCKS}
+    assert stage.unlock_model_limits(tmp_path / "nowhere") == []
+
+
+def test_unlock_model_limits_rejects_a_flag_that_is_not_a_boolean(tmp_path):
+    _model_meta(tmp_path / "M.model.meta")
+    with pytest.raises(ValueError, match="UnlockMaterialLimits must be True or False"):
+        stage.unlock_model_limits(tmp_path, {"UnlockMaterialLimits": "yes"})
