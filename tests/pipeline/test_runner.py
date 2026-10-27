@@ -2,6 +2,8 @@
 block selection, the command line, and the plain errors (the build itself runs in Blender)."""
 
 import json
+import sys
+import types
 
 import pytest
 
@@ -98,6 +100,61 @@ def test_launch_outside_blender_is_main(hooks, capsys):
     except ImportError:
         pass
     assert _runner(hooks).launch(["--help"]) == 0 and "--export" in capsys.readouterr().out
+
+
+def _fake_bpy(monkeypatch, *, background):
+    """A stand-in `bpy` that records the timer a windowed launch registers and every Blender quit."""
+    seen = types.SimpleNamespace(timers=[], quits=0)
+    timers = types.SimpleNamespace(register=lambda fn, first_interval: seen.timers.append(fn))
+    quit_blender = lambda: setattr(seen, "quits", seen.quits + 1)   # noqa: E731
+    bpy = types.SimpleNamespace(app=types.SimpleNamespace(background=background, timers=timers),
+                                ops=types.SimpleNamespace(wm=types.SimpleNamespace(quit_blender=quit_blender)))
+    monkeypatch.setitem(sys.modules, "bpy", bpy)
+    for name in ("OWNS_BLENDER", "NO_QUIT"):
+        monkeypatch.delenv(f"SE2MODKIT_{name}", raising=False)
+        monkeypatch.delenv(f"XX_{name}", raising=False)
+    return seen
+
+
+def _windowed_timer(hooks, monkeypatch, rc=0, **env):
+    """Launch in a fake windowed Blender with `env` set; (recorder, the timer it registered)."""
+    seen = _fake_bpy(monkeypatch, background=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    r = _runner(hooks)
+    monkeypatch.setattr(r, "main", lambda argv: rc)
+    assert r.launch(["XX_Panel"]) is None and len(seen.timers) == 1 and seen.quits == 0   # nothing runs at once
+    return seen, seen.timers[0]
+
+
+def test_launch_quits_only_a_blender_that_se2mod_started(hooks, monkeypatch, capsys):
+    seen, timer = _windowed_timer(hooks, monkeypatch)
+    assert timer() is None and seen.quits == 0                             # someone's own Blender stays open
+    out = capsys.readouterr().out
+    assert "=== BUILD DONE ===" in out and "not started by se2mod" in out
+    seen, timer = _windowed_timer(hooks, monkeypatch, SE2MODKIT_OWNS_BLENDER="1")   # set by `se2mod blender run`
+    assert timer() is None and seen.quits == 1
+    assert "not started by se2mod" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("quit_switch", ["SE2MODKIT_NO_QUIT", "XX_NO_QUIT"])
+def test_launch_no_quit_keeps_an_owned_blender_open(hooks, monkeypatch, capsys, quit_switch):
+    seen, timer = _windowed_timer(hooks, monkeypatch, SE2MODKIT_OWNS_BLENDER="1", **{quit_switch: "1"})
+    assert timer() is None and seen.quits == 0
+    assert "=== BUILD DONE ===" in capsys.readouterr().out
+
+
+def test_launch_quits_an_owned_blender_after_a_failed_build(hooks, monkeypatch, capsys):
+    seen, timer = _windowed_timer(hooks, monkeypatch, rc=1, SE2MODKIT_OWNS_BLENDER="1")
+    assert timer() is None and seen.quits == 1
+    assert "=== BUILD FAILED ===" in capsys.readouterr().out
+
+
+def test_launch_in_background_blender_is_main(hooks, monkeypatch):
+    seen = _fake_bpy(monkeypatch, background=True)
+    r = _runner(hooks)
+    monkeypatch.setattr(r, "main", lambda argv: 3)
+    assert r.launch(["XX_Panel"]) == 3 and seen.timers == [] and seen.quits == 0
 
 
 def _offline(r, monkeypatch):

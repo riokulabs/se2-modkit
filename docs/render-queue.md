@@ -49,6 +49,10 @@ submitted it (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`, `XDG_RUNTIME_DIR`, `DB
 `PATH`, on top of the runner's environment. Nothing else from the submitting shell is stored, so tokens in your
 environment never land in the queue folder; pass what a job needs with `--env`.
 
+A windowed build script closes Blender when it finishes only if `se2mod` started that Blender (`se2mod blender run`,
+`se2mod build-models`). A queued command that starts a windowed `blender` itself needs `--env SE2MODKIT_OWNS_BLENDER=1`
+for the job to end; without it the window stays open until you close it.
+
 ## Loads and the budget
 
 The runner starts jobs in submission order while their combined load fits two limits:

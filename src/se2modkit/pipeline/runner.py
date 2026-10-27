@@ -635,9 +635,10 @@ class Runner:
     def launch(self, argv: list[str]) -> int | None:
         """Run the build the way the Blender session needs: in the background (or plain Python) it is `main` (the
         exit code); in a windowed Blender (--export: Keen's add-on needs a GPU context) it waits for the window, runs
-        `main` from a timer, prints DONE / FAILED and quits Blender (unless SE2MODKIT_NO_QUIT, or the legacy
-        <prefix>NO_QUIT, is set), and returns
-        None at once (the script must not exit then)."""
+        `main` from a timer, prints DONE / FAILED and returns None at once (the script must not exit then). Blender
+        is quit only when `se2mod` started it (SE2MODKIT_OWNS_BLENDER, set by `se2mod blender run` and the model
+        build) and SE2MODKIT_NO_QUIT (or the legacy <prefix>NO_QUIT) is not set: a script run by hand inside someone's
+        own Blender leaves it open."""
         try:
             import bpy
         except ImportError:
@@ -654,8 +655,12 @@ class Runner:
                 traceback.print_exc()
                 print(FAILED)
             finally:
-                if not self.env("NO_QUIT"):
+                if self.env("NO_QUIT"):
+                    pass
+                elif self.env("OWNS_BLENDER"):
                     bpy.ops.wm.quit_blender()
+                else:
+                    print("The build has ended; this Blender was not started by se2mod, so it stays open.")
             return None
         bpy.app.timers.register(run_windowed, first_interval=2.0)
         return None

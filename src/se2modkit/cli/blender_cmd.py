@@ -79,8 +79,10 @@ def _mod_source(env: SE2Env, selector: str | None, script: Path) -> Path:
 
 def build_env(env: SE2Env, base: dict | None = None) -> dict[str, str]:
     """The environment for a Blender build: the installed game version and Mod SDK build id ride along as
-    SE2MODKIT_GAME_VERSION / SE2MODKIT_SDK_BUILDID, so they are inputs of every block's key (pipeline.incremental)."""
+    SE2MODKIT_GAME_VERSION / SE2MODKIT_SDK_BUILDID, so they are inputs of every block's key (pipeline.incremental).
+    SE2MODKIT_OWNS_BLENDER says this Blender is the tool's own: a windowed build may quit it when it is done."""
     child = dict(os.environ if base is None else base)
+    child["SE2MODKIT_OWNS_BLENDER"] = "1"
     child["SE2MODKIT_GAME_VERSION"] = str(env.game_version or "none")
     child["SE2MODKIT_SDK_BUILDID"] = str(env.sdk_buildid or "none")
     return child
