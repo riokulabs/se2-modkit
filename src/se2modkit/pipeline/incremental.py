@@ -524,7 +524,7 @@ def hooks_view(hooks, spec) -> dict:
         v = getattr(hooks, f.name)
         if f.name in _FAMILY_TABLES and isinstance(v, Mapping):
             v = {fam: v[fam]} if fam in v else {}
-        elif f.name == "damaged_tris_x" and isinstance(v, Mapping):
+        elif f.name in ("damaged_tris_x", "fracture_budget_x") and isinstance(v, Mapping):
             v = {k: v[k] for k in ("default", fam) if k in v}
         elif f.name == "unfractured" and isinstance(v, Mapping):
             v = {k: v[k] for k in (name, fam) if k in v}

@@ -246,6 +246,17 @@ def test_spec_hooks_modkit_and_env_changes(toy, hooks, monkeypatch, capsys):
     assert toy.run("XX_Panel", "--no-render") == []
 
 
+def test_a_budget_ratio_rebuilds_only_its_family(toy, hooks):
+    toy.run("--no-render")
+    hooks.fracture_budget_x["panel"] = 2.0               # a family's entry: that family's blocks
+    assert toy.run("--no-render") == ["XX_Panel"]
+    hooks.fracture_budget_x["box"] = None
+    assert toy.run("--no-render") == ["XX_Box_Small", "XX_Box_Large"]
+    assert toy.run("--no-render") == []
+    hooks.fracture_budget_x["default"] = 1.5             # the default: every family
+    assert len(toy.run("--no-render")) == 3
+
+
 def test_the_style_profile_is_an_input(toy, hooks):
     root = hooks.paths.root
     (root / "XX_Mod.vrgproj").write_text("<Project/>\n", encoding="utf-8")

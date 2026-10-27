@@ -26,6 +26,7 @@ def test_hooks_defaults_empty(tmp_path):
         v = getattr(h, name)
         assert v == type(v)() and isinstance(v, (dict, set, tuple)), name
     assert h.damaged_tris_x == {"default": 1.2} and h.tris_x("box") == 1.2
+    assert h.fracture_budget_x == {"default": 1.0} and h.budget_x("box") == 1.0
     assert h.bundle_stamps is None and h.accumulate_bundles is False
     assert h.validate() == []
 
@@ -33,7 +34,7 @@ def test_hooks_defaults_empty(tmp_path):
 def test_hooks_fields_are_the_documented_api():
     names = {f.name for f in dataclasses.fields(ModHooks) if f.init}
     assert names == {"prefix", "name", "paths", "bundle_stamps", "accumulate_bundles", "damaged_tris_x",
-                     "zfight_bury_d", *TABLES}
+                     "fracture_budget_x", "zfight_bury_d", *TABLES}
 
 
 @pytest.mark.parametrize("prefix", ["XX", "", "_", "xx_", "X_Y", "1X_"])
@@ -46,14 +47,16 @@ def test_hooks_validate_rejects_bad_prefix(tmp_path, prefix):
 
 def test_hooks_are_not_module_globals(tmp_path):
     a, b = make_hooks(tmp_path / "a"), make_hooks(tmp_path / "b")
-    for name in (*TABLES, "damaged_tris_x"):
+    for name in (*TABLES, "damaged_tris_x", "fracture_budget_x"):
         if not isinstance(getattr(a, name), tuple):        # tuples are immutable (and () is a singleton)
             assert getattr(a, name) is not getattr(b, name), name
     a.roles["box"] = {"support": ("Frame",)}
     a.scaffold_zone_boxes["box"] = 0.025
     a.damaged_tris_x["box"] = 1.5
+    a.fracture_budget_x["box"] = None
     a.connect_roots.add("Frame")
     assert b.roles == {} and b.scaffold_zone_boxes == {} and b.damaged_tris_x == {"default": 1.2}
+    assert b.fracture_budget_x == {"default": 1.0}
     assert b.connect_roots == set()
 
 
@@ -146,6 +149,22 @@ def test_unfractured_reason_and_tris_x(tmp_path):
     assert h.unfractured_reason(Spec("XX_Box")) is None
     assert h.tris_x("deck") == 1.5 and h.tris_x("box") == 1.2
     assert h.unfractured_boxes == ("rear_stop",) and h.validate() == []
+
+
+def test_budget_x_per_family_and_uncapped(tmp_path):
+    h = make_hooks(tmp_path, fracture_budget_x={"default": 1.0, "deck": 2.5, "drive": None})
+    assert h.budget_x("deck") == 2.5 and h.budget_x("box") == 1.0
+    assert h.budget_x("drive") is None and h.validate() == []
+    h.fracture_budget_x["default"] = None            # no cap anywhere unless a family says otherwise
+    assert h.budget_x("box") is None and h.validate() == []
+
+
+def test_validate_budget_x(tmp_path):
+    errs = " ".join(make_hooks(tmp_path, fracture_budget_x={"deck": 2.0}).validate())
+    assert 'fracture_budget_x: needs a "default" entry' in errs
+    errs = make_hooks(tmp_path, fracture_budget_x={"default": 1.0, "deck": 0, "lid": "2", "rail": -1.5}).validate()
+    assert [e.split(":")[0] for e in errs] == ["fracture_budget_x['deck']", "fracture_budget_x['lid']",
+                                               "fracture_budget_x['rail']"]
 
 
 def test_validate_fracture_extras(tmp_path):

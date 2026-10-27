@@ -140,6 +140,20 @@ def test_fracture_budget_and_lod_side():
         assert FR.lod_side(size, 12000, int(r * 1.05)) == "ambiguous"
 
 
+def test_fracture_budget_ratio_and_uncapped(hooks):
+    size = (1.0, 0.8, 0.24)
+    base = FR.fracture_budget(size, 800, 3)
+    assert FR.fracture_budget(size, 800, 3, 1.0) == base == [2069, 817, 55]
+    wide = FR.fracture_budget(size, 800, 3, 3.0)
+    assert wide[0] == base[0] and wide[1:] == [2451, 165]       # the LOD0 row (Keen's LOD count) is not scaled
+    assert FR.fracture_budget(size, 800, 3, 0.5)[1:] == [408, 27]
+    assert FR.fracture_budget(size, 800, 3, None) == [FR.UNCAPPED_TRIS] * 3
+    # the ratio comes from the family's hook entry, else the default
+    hooks.fracture_budget_x.update({"box": None, "lid": 2.0})
+    assert FR.fracture_budget_x(hooks, "box") is None and FR.fracture_budget_x(hooks, "lid") == 2.0
+    assert FR.fracture_budget_x(hooks, "panel") == 1.0
+
+
 def test_dent_seed_is_stable_and_per_mod(hooks):
     import zlib
     assert FR.dent_seed(hooks, "XX_Box") == (zlib.crc32(b"xx_mod/XX_Box") & 0x7FFFFFFF)

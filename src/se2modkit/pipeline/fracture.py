@@ -14,12 +14,13 @@ DestructionThreshold (0.3 by default). Zone health = collider volume share, x 2 
 
 The family tables come from the mod's `ModHooks` (the first argument of every function that reads one): `plans`
 {family: fn(spec, boxes) -> Plan}, `keep_whole`, `roles`, `core_parts`, `dent`, `jag`, `unfractured`,
-`damaged_tris_x`, `standins`, `min_share_exempt`. `plan(hooks, spec, boxes)` dispatches on `hooks.plans[spec.family]`
-and raises for a family with no plan that is not unfractured.
+`damaged_tris_x`, `fracture_budget_x`, `standins`, `min_share_exempt`. `plan(hooks, spec, boxes)` dispatches on
+`hooks.plans[spec.family]` and raises for a family with no plan that is not unfractured.
 
 The SDK's limits (model.limits): a fractured model may hold
 round(interp(max edge: 0.25 m -> 1, 0.5 -> 2, 1.5 -> 5, 2.5 -> 15)) fractures, 32 materials and 256 mesh parts per
-LOD, and 1.83425 x the triangles; its LOD count is still keyed on its own LOD0 triangles (fracture_budget).
+LOD, and 1.83425 x the triangles; its LOD count is still keyed on its own LOD0 triangles (fracture_budget; a mod
+may raise or lift the triangle cap with `fracture_budget_x`).
 """
 
 from __future__ import annotations
@@ -34,11 +35,11 @@ from .standins import STANDIN_PROPS, StandIn
 
 __all__ = ["CUT_MATERIAL", "CUT_PROPS", "CUT_UV_PER_M", "DAMAGED_SLOTS", "FractureError", "GLASS_MATERIALS",
            "HIDE_PREFIXES", "Plan", "ROLE_IDS", "ROLE_PROPS", "ROLE_SUFFIX", "STANDIN_PROPS", "SUBPART_SUFFIX", "Seam",
-           "StandIn", "TABLE_ROLES", "Zone", "box_hull", "check_role_tables", "clip_box", "damaged_slot",
-           "damaged_tris_x", "dent_seed", "fracture_budget", "grid_zones", "health_shares", "is_hide",
-           "lift_small_zones", "lod_row", "lod_side", "max_fractures", "min_share_box", "min_share_exempt", "plan",
-           "polytope_vertices", "polytope_volume", "role_of", "role_props", "shaped_hull", "skin_carrier",
-           "unfractured_reason"]
+           "StandIn", "TABLE_ROLES", "UNCAPPED_TRIS", "Zone", "box_hull", "check_role_tables", "clip_box",
+           "damaged_slot", "damaged_tris_x", "dent_seed", "fracture_budget", "fracture_budget_x", "grid_zones",
+           "health_shares", "is_hide", "lift_small_zones", "lod_row", "lod_side", "max_fractures", "min_share_box",
+           "min_share_exempt", "plan", "polytope_vertices", "polytope_volume", "role_of", "role_props", "shaped_hull",
+           "skin_carrier", "unfractured_reason"]
 
 
 class FractureError(RuntimeError):
@@ -143,6 +144,11 @@ MIN_DENT_MM = 1.5
 def damaged_tris_x(hooks, family):
     """The Damaged / Fractured (scaffold excluded) triangle ratio cap of a family (`hooks.damaged_tris_x`)."""
     return hooks.tris_x(family)
+
+
+def fracture_budget_x(hooks, family):
+    """The triangle budget ratio of a family's Fractured / Damaged model (`hooks.fracture_budget_x`; None: no cap)."""
+    return hooks.budget_x(family)
 
 
 def min_share_exempt(hooks, family):
@@ -559,12 +565,18 @@ def max_fractures(size):
     return int(round(v))       # Python's round is round-half-to-even, as the game rounds here
 
 
-def fracture_budget(size, lod0_tris, n_lods):
+UNCAPPED_TRIS = 10 ** 9      # the per-LOD budget of a family whose `fracture_budget_x` is None
+
+
+def fracture_budget(size, lod0_tris, n_lods, ratio=1.0):
     """Per LOD, the most triangles a fractured / damaged model of this block may have: Keen's fractured limit
     (x 1.83425) with 5 % headroom, and on LOD0 the row value that keeps Keen's LOD count (the count is keyed on the
-    model's own LOD0 triangles: crossing row[bias] would ask for one more LOD)."""
+    model's own LOD0 triangles: crossing row[bias] would ask for one more LOD). `ratio` (the family's
+    `fracture_budget_x`) scales the limit but not the LOD0 row; None lifts the cap on every LOD."""
+    if ratio is None:
+        return [UNCAPPED_TRIS] * n_lods
     frac = limits.model_limits(size, lod0_tris, fractured=True)
-    out = [int(frac["lods"][i]["max_tris"] * 0.95) for i in range(n_lods)]
+    out = [int(frac["lods"][i]["max_tris"] * 0.95 * ratio) for i in range(n_lods)]
     r = lod_row(size, lod0_tris)
     if r is not None:
         out[0] = min(out[0], int(LOD_ROW_BAND[0] * r))

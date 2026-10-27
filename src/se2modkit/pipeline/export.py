@@ -372,7 +372,8 @@ def _export_unfractured_damaged(hooks, spec, lods, boxes, ops, tmp, man, fr_lods
     colliders a copy of the Fractured model's plain physics boxes. Sets man["damaged"]; returns the collider objects."""
     fam = spec.family
     lo, hi = OB.bounds([o for o in lods[0][1] if o.type == "MESH"])
-    budget = FR.fracture_budget(tuple(man["nonfractured"]["size"]), _tris(fr_lods[0]), len(fr_lods))
+    budget = FR.fracture_budget(tuple(man["nonfractured"]["size"]), _tris(fr_lods[0]), len(fr_lods),
+                                FR.fracture_budget_x(hooks, fam))
     dm, stats, dm_size = {"lods": []}, {}, None
     for i, lod_objs in enumerate(fr_lods):
         dm_objs = []
@@ -771,7 +772,7 @@ def _export_planned(hooks, spec, lods, plan, ops, tmp, man, fr_dir, dm_dir, made
     if need != n + int(added_mid):
         raise RuntimeError(f"{spec.name}: cut LOD0 has {t0} tris, Keen expects {need} LODs (have {n + added_mid})")
     n_fr = len(res) + 1
-    budget = FR.fracture_budget(size, t0, n_fr)
+    budget = FR.fracture_budget(size, t0, n_fr, FR.fracture_budget_x(hooks, plan.family))
     for i, r in enumerate(res):   # a lower LOD over its budget (many thin cut posts) caps
         for m in (FR.THIN_CAP, 3 * FR.THIN_CAP, 9 * FR.THIN_CAP):   # only its bigger cut loops
             if i == 0 or FM.lod_tris(res[i]) <= budget[i]:

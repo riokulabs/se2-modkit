@@ -5,7 +5,8 @@ place during registration (`hooks.roles["box"] = {...}`, `hooks.plans["box"] = p
 and passes it as the `hooks` argument to every pipeline, definition and staging function. Nothing in modkit reads a
 mod's tables through a module global or an import side effect.
 
-Tables (empty by default except `damaged_tris_x`; a family is the block family name a mod's specs carry):
+Tables (empty by default except `damaged_tris_x` and `fracture_budget_x`; a family is the block family name a mod's
+specs carry):
 
     keep_whole        {family: (part names)}               parts never cut by a fracture seam
     roles             {family: {role: (part names)}}       construction roles per part (skin is the default)
@@ -16,6 +17,9 @@ Tables (empty by default except `damaged_tris_x`; a family is the block family n
                                                            blocks deliberately not breakable (`unfractured_reason`)
     unfractured_boxes (physics box names)                  collision boxes no fracture zone takes
     damaged_tris_x    {"default": 1.2, family: ratio}      Damaged / Fractured triangle ratio cap (`tris_x`)
+    fracture_budget_x {"default": 1.0, family: ratio|None} Fractured / Damaged triangle budget as a ratio of Keen's
+                                                           limit with its headroom (`budget_x`): 1.5 allows half as
+                                                           many triangles again, None lifts the cap
     standins          {block name: (StandIn, ...)}         parked subparts baked into the Fractured / Damaged model
     min_share_exempt  {(family, zone id)}                  zones kept on their shaped hull under the minimum share
     core_parts        {family: (part names)}               the solid core of a broken zone
@@ -95,6 +99,7 @@ class ModHooks:
     unfractured: dict[str, str | Callable[[Any], str | None]] = field(default_factory=dict)
     unfractured_boxes: tuple[str, ...] = ()
     damaged_tris_x: dict[str, float] = field(default_factory=lambda: {"default": 1.2})
+    fracture_budget_x: dict[str, float | None] = field(default_factory=lambda: {"default": 1.0})
     standins: dict[str, tuple] = field(default_factory=dict)
     min_share_exempt: set[tuple[str, int]] = field(default_factory=set)
     core_parts: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -164,6 +169,11 @@ class ModHooks:
         """The Damaged / Fractured triangle ratio cap of a family (`damaged_tris_x`, else its "default")."""
         return self.damaged_tris_x.get(family, self.damaged_tris_x["default"])
 
+    def budget_x(self, family: str) -> float | None:
+        """The triangle budget ratio of a family's Fractured / Damaged model (`fracture_budget_x`, else its "default");
+        None: no cap."""
+        return self.fracture_budget_x.get(family, self.fracture_budget_x["default"])
+
     def check(self) -> None:
         """Raise `HooksError` (every problem, one sentence each) unless `validate()` is clean."""
         errs = self.validate()
@@ -202,6 +212,11 @@ class ModHooks:
         for k, v in self.damaged_tris_x.items():
             if not (isinstance(v, numbers.Real) and v > 0):
                 errs.append(f"damaged_tris_x[{k!r}]: {v!r} is not a positive ratio.")
+        if "default" not in self.fracture_budget_x:
+            errs.append("fracture_budget_x: needs a \"default\" entry (a ratio, or None for no cap).")
+        for k, v in self.fracture_budget_x.items():
+            if v is not None and not (isinstance(v, numbers.Real) and v > 0):
+                errs.append(f"fracture_budget_x[{k!r}]: {v!r} is not a positive ratio or None.")
         for k, v in self.scaffold_zone_boxes.items():
             if not (isinstance(v, numbers.Real) and v >= 0):
                 errs.append(f"scaffold_zone_boxes[{k!r}]: {v!r} is not a thickness in metres (>= 0).")
