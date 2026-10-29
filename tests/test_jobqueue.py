@@ -439,8 +439,9 @@ def test_runner_service_line_keeps_the_runner_out_of_the_callers_cgroup(tmp_path
     assert f"--unit={Q.runner_unit(tmp_path)}" in cmd and Q.runner_unit(tmp_path) == Q.runner_unit(tmp_path / ".")
     assert Q.runner_unit(tmp_path) != Q.runner_unit(tmp_path / "other")
     assert f"StandardOutput=append:{tmp_path / 'runner.log'}" in cmd
-    assert "--setenv=DISPLAY=:0" in cmd and "--setenv=PYTHONPATH=/kit" in cmd
+    assert "--setenv=DISPLAY" in cmd and "--setenv=PYTHONPATH" in cmd
     assert not any(a.startswith(("--setenv=INVOCATION_ID", "--setenv=BAD")) for a in cmd)
+    assert not any(":0" in a or "/kit" in a for a in cmd)        # names only: values never reach the command line
     assert cmd[cmd.index("--") + 1:] == Q.runner_command(tmp_path)
 
 

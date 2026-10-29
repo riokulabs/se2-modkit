@@ -376,7 +376,8 @@ def systemd_runner_command(root: Path, env: Mapping[str, str]) -> list[str] | No
     app the submitter runs in. So restarting that app doesn't take the runner down, and the kernel never has to move
     days of the runner's file cache to another cgroup when the app's cgroup closes; that move can keep a CPU busy and
     stall disk writes for many minutes. The unit gets the submitter's environment, as a directly spawned runner
-    would."""
+    would: each variable is named with a bare --setenv=KEY, so systemd-run copies the value from its own environment
+    (run it with `env`) and no value, token or not, ever shows on a command line."""
     if os.name == "nt" or not shutil.which("systemd-run") or not env.get("XDG_RUNTIME_DIR"):
         return None
     log = Path(root) / "runner.log"
@@ -386,7 +387,7 @@ def systemd_runner_command(root: Path, env: Mapping[str, str]) -> list[str] | No
     for key, value in sorted(env.items()):
         if key in _UNIT_OWN_ENV or "\n" in value or "=" in key or not key:
             continue
-        cmd.append(f"--setenv={key}={value}")
+        cmd.append(f"--setenv={key}")
     return cmd + ["--", *runner_command(root)]
 
 
@@ -401,10 +402,12 @@ def spawn_runner(root: Path) -> subprocess.Popen | subprocess.CompletedProcess:
             os.replace(log, root / "runner.log.1")
     except OSError:
         pass
-    service = systemd_runner_command(root, runner_env())
+    env = runner_env()
+    service = systemd_runner_command(root, env)
     if service:
         try:
-            done = subprocess.run(service, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+            done = subprocess.run(service, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20,
+                                  env=env)
         except (OSError, subprocess.TimeoutExpired):
             done = None
         if done is not None and done.returncode == 0:
