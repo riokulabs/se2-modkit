@@ -426,3 +426,36 @@ def test_runner_env_lets_a_fresh_interpreter_import_se2modkit(tmp_path):
     out = subprocess.run([sys.executable, "-S", "-c", "import se2modkit, sys; print('ok')"], env=env, cwd=tmp_path,
                          capture_output=True, text=True, timeout=60)
     assert out.returncode == 0 and out.stdout.strip() == "ok", out.stderr
+
+
+def test_runner_service_line_keeps_the_runner_out_of_the_callers_cgroup(tmp_path, monkeypatch):
+    """With a systemd user manager the runner starts as its own user unit (one name per queue directory), logs to
+    runner.log, and carries the submitter's environment except systemd's own per-unit variables."""
+    monkeypatch.setattr(Q.shutil, "which", lambda name: "/usr/bin/" + name)
+    env = {"XDG_RUNTIME_DIR": "/run/user/1000", "DISPLAY": ":0", "PYTHONPATH": "/kit", "INVOCATION_ID": "abc",
+           "BAD": "two\nlines"}
+    cmd = Q.systemd_runner_command(tmp_path, env)
+    assert cmd[:4] == ["systemd-run", "--user", "--collect", "--quiet"]
+    assert f"--unit={Q.runner_unit(tmp_path)}" in cmd and Q.runner_unit(tmp_path) == Q.runner_unit(tmp_path / ".")
+    assert Q.runner_unit(tmp_path) != Q.runner_unit(tmp_path / "other")
+    assert f"StandardOutput=append:{tmp_path / 'runner.log'}" in cmd
+    assert "--setenv=DISPLAY=:0" in cmd and "--setenv=PYTHONPATH=/kit" in cmd
+    assert not any(a.startswith(("--setenv=INVOCATION_ID", "--setenv=BAD")) for a in cmd)
+    assert cmd[cmd.index("--") + 1:] == Q.runner_command(tmp_path)
+
+
+def test_runner_service_line_needs_a_user_manager(tmp_path, monkeypatch):
+    monkeypatch.setattr(Q.shutil, "which", lambda name: None)
+    assert Q.systemd_runner_command(tmp_path, {"XDG_RUNTIME_DIR": "/run/user/1000"}) is None
+    monkeypatch.setattr(Q.shutil, "which", lambda name: "/usr/bin/" + name)
+    assert Q.systemd_runner_command(tmp_path, {}) is None          # no user session to talk to
+
+
+def test_spawn_runner_falls_back_to_a_detached_child(tmp_path, monkeypatch):
+    """If systemd-run fails (say the unit name is still taken), the runner starts the old way."""
+    monkeypatch.setattr(Q, "systemd_runner_command", lambda root, env: ["systemd-run", "--user"])
+    monkeypatch.setattr(Q.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 1, "", "exists"))
+    started = []
+    monkeypatch.setattr(Q.subprocess, "Popen", lambda argv, **kw: started.append((argv, kw)) or "proc")
+    assert Q.spawn_runner(tmp_path) == "proc"
+    assert started[0][0] == Q.runner_command(tmp_path) and started[0][1].get("start_new_session")

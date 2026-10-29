@@ -15,8 +15,10 @@ everyone who changes a job file, `runner.lock` held by the one runner for its li
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -357,8 +359,41 @@ def runner_command(root: Path) -> list[str]:
             "queue", "--queue-dir", str(root), "run"]
 
 
-def spawn_runner(root: Path) -> subprocess.Popen:
-    """Start a detached runner (it outlives the caller); its output goes to runner.log."""
+# Variables systemd sets for a unit itself; copying the submitter's would confuse the runner's own unit.
+_UNIT_OWN_ENV = ("INVOCATION_ID", "JOURNAL_STREAM", "MANAGERPID", "NOTIFY_SOCKET", "SYSTEMD_EXEC_PID", "LISTEN_FDS",
+                 "LISTEN_PID", "LISTEN_FDNAMES", "MEMORY_PRESSURE_WATCH", "MEMORY_PRESSURE_WRITE")
+
+
+def runner_unit(root: Path) -> str:
+    """The systemd user unit name of the runner for queue directory `root` (one per directory)."""
+    return "se2mod-queue-" + hashlib.sha1(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:8]
+
+
+def systemd_runner_command(root: Path, env: Mapping[str, str]) -> list[str] | None:
+    """The systemd-run line that starts the runner as its own user service, or None without a systemd user manager.
+
+    In its own unit the runner (and every job it starts) has its own cgroup instead of sharing the cgroup of whatever
+    app the submitter runs in. So restarting that app doesn't take the runner down, and the kernel never has to move
+    days of the runner's file cache to another cgroup when the app's cgroup closes; that move can keep a CPU busy and
+    stall disk writes for many minutes. The unit gets the submitter's environment, as a directly spawned runner
+    would."""
+    if os.name == "nt" or not shutil.which("systemd-run") or not env.get("XDG_RUNTIME_DIR"):
+        return None
+    log = Path(root) / "runner.log"
+    cmd = ["systemd-run", "--user", "--collect", "--quiet", f"--unit={runner_unit(root)}",
+           f"--description=se2mod job queue runner ({root})", f"--working-directory={root}",
+           "-p", f"StandardOutput=append:{log}", "-p", f"StandardError=append:{log}"]
+    for key, value in sorted(env.items()):
+        if key in _UNIT_OWN_ENV or "\n" in value or "=" in key or not key:
+            continue
+        cmd.append(f"--setenv={key}={value}")
+    return cmd + ["--", *runner_command(root)]
+
+
+def spawn_runner(root: Path) -> subprocess.Popen | subprocess.CompletedProcess:
+    """Start a detached runner (it outlives the caller); its output goes to runner.log. Where a systemd user manager
+    runs, the runner gets its own user service (see systemd_runner_command); otherwise, or if that fails, it is a
+    detached child in its own session."""
     root.mkdir(parents=True, exist_ok=True)
     log = root / "runner.log"
     try:
@@ -366,6 +401,14 @@ def spawn_runner(root: Path) -> subprocess.Popen:
             os.replace(log, root / "runner.log.1")
     except OSError:
         pass
+    service = systemd_runner_command(root, runner_env())
+    if service:
+        try:
+            done = subprocess.run(service, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired):
+            done = None
+        if done is not None and done.returncode == 0:
+            return done
     kw: dict = {}
     if os.name == "nt":
         kw["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
