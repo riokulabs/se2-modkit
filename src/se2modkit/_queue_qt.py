@@ -91,9 +91,10 @@ class GpuCard(QtWidgets.QFrame):
 
 
 class QueueWindow(QtWidgets.QMainWindow):
-    def __init__(self, store: Q.Store, settings: Q.Settings, devices: list[tuple[int, str, str]]):
+    def __init__(self, store: Q.Store, settings: Q.Settings, devices: list[tuple[int, str, str]],
+                 blender: Path | None = None):
         super().__init__()
-        self.store, self.settings, self.devices = store, settings, devices
+        self.store, self.settings, self.devices, self.blender = store, settings, devices, blender
         self.selected: int | None = None
         self.shown_log: tuple[int, int] | None = None
         self.setWindowTitle("se2mod queue")
@@ -137,6 +138,10 @@ class QueueWindow(QtWidgets.QMainWindow):
         self.pause_btn = QtWidgets.QPushButton()
         self.pause_btn.clicked.connect(self.toggle_pause)
         bar.addWidget(self.pause_btn)
+        self.blender_btn = QtWidgets.QPushButton()
+        self.blender_btn.setIcon(_icon("blender", "applications-graphics"))
+        self.blender_btn.clicked.connect(self.toggle_blender)
+        bar.addWidget(self.blender_btn)
         bar.addSpacing(14)
         self.move_btns = []
         for label, where, icons, key in (("Top", "top", ("go-top",), "Ctrl+Home"),
@@ -218,6 +223,31 @@ class QueueWindow(QtWidgets.QMainWindow):
         if not paused and self.store.queued():
             Q.ensure_runner(self.store)
         self.say("Paused: running jobs carry on, nothing new starts." if paused else "Resumed.")
+        self.refresh()
+
+    def toggle_blender(self) -> None:
+        live = self.store.live_blender()
+        if live is None:
+            if self.blender is None:
+                self.say("No Blender found: set it with SE2_BLENDER or config blender.")
+                return
+            try:
+                job = self.store.submit_blender(self.blender)
+            except Q.QueueError as e:
+                self.say(str(e))
+                return
+            Q.ensure_runner(self.store)
+            self.say(f"Blender is job {job.id}, next in line" + ("; resume the queue to start it." if
+                                                                  self.store.paused else "."))
+        else:
+            if live.state == "running":
+                answer = QtWidgets.QMessageBox.question(
+                    self, "Stop Blender", "Close the live Blender?\n\nIt saves the open file first (a file that was "
+                                          "never saved goes to ~/.cache/se2modkit/live-blender).")
+                if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                    return
+            self.store.cancel([live.id])
+            self.say("Closing Blender." if live.state == "running" else "Blender session cancelled.")
         self.refresh()
 
     def move(self, where: str) -> None:
@@ -321,6 +351,12 @@ class QueueWindow(QtWidgets.QMainWindow):
             self.pill.setText("Paused" if paused else "Running")
             self.pill.setStyleSheet(f"background: {'#f59f00' if paused else '#2f9e44'};")
             self.pause_btn.setText("Resume queue" if paused else "Pause queue")
+            live = next((j for j in jobs if j.kind == "blender" and not j.final), None)
+            self.blender_btn.setText("Start Blender" if live is None else
+                                     "Stop Blender" if live.state == "running" else "Cancel Blender")
+            self.blender_btn.setToolTip("A live, windowed Blender as a queue job: it waits its turn, then holds the "
+                                        "GPU slot until it closes. Agents drive it through the MCP add-on.")
+            self.blender_btn.setEnabled(live is not None or self.blender is not None)
             self.pause_btn.setIcon(_icon("media-playback-start") if paused else _icon("media-playback-pause"))
             self.runner.setText(G.runner_text(self.store, jobs, self.settings).split("·", 1)[1].strip())
 
@@ -336,13 +372,13 @@ class QueueWindow(QtWidgets.QMainWindow):
             self.say(f"refresh failed: {e}")
 
 
-def run(store: Q.Store, settings: Q.Settings) -> int:
+def run(store: Q.Store, settings: Q.Settings, blender: Path | None = None) -> int:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(["se2mod queue"])
     app.setApplicationName("se2mod queue")
     app.setDesktopFileName("se2mod-queue")
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     _use_desktop_icons()
-    win = QueueWindow(store, settings, gpumod.describe() if gpumod.supported() else [])
+    win = QueueWindow(store, settings, gpumod.describe() if gpumod.supported() else [], blender)
     win.show()
     return app.exec()

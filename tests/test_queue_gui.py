@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from se2modkit import gpu as gpumod
 from se2modkit import jobqueue as Q
 from se2modkit import queue_gui as G
@@ -84,6 +86,13 @@ def test_qt_window_lists_jobs_and_moves_them(tmp_path, monkeypatch):
         assert win.tree.topLevelItemCount() == 3 and win.tree.topLevelItem(2).text(0) == str(old.id)
         win.clear_finished()
         assert store.load(old.id) is None and win.tree.topLevelItemCount() == 2
+        assert win.blender_btn.text() == "Start Blender" and not win.blender_btn.isEnabled()   # no Blender known
+        win.blender = Path("/opt/blender/blender")
+        win.toggle_blender()
+        live = store.live_blender()
+        assert live is not None and store.queued()[0].id == live.id and win.blender_btn.text() == "Cancel Blender"
+        win.toggle_blender()                                            # a waiting session is simply cancelled
+        assert store.live_blender() is None and win.blender_btn.text() == "Start Blender"
     finally:
         win.timer.stop()
         win.close()

@@ -104,6 +104,11 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     where.add_argument("--up", action="store_true", help="one place earlier")
     where.add_argument("--down", action="store_true", help="one place later")
 
+    bl = sub.add_parser("blender", help="start a live, windowed Blender as a queue job (next in line); "
+                                         "cancelling it saves the open file, then closes Blender")
+    bl.add_argument("blend_file", nargs="?", type=Path, metavar="FILE.blend", help="file to open")
+    bl.add_argument("--gpu", type=_gpu, default="auto", metavar="auto|N", help="GPU (default: least busy)")
+
     sub.add_parser("gui", help="open a window showing the queue and the GPUs, with pause, reorder and cancel")
 
     r = sub.add_parser("run", help="run the queue runner in the foreground (normally started by submit)")
@@ -115,8 +120,8 @@ def _settings(env) -> Q.Settings:
     return Q.Settings.from_config(load_user_config(env.config_dir / "config.toml"))
 
 
-@register("queue", "Job queue for GPU-heavy work: queue submit|wait|status|log|cancel|clear|pause|resume|move|gui|run",
-          add_args=_add_args,
+@register("queue", "Job queue for GPU-heavy work: queue submit|wait|status|log|cancel|clear|pause|resume|move|"
+                   "blender|gui|run", add_args=_add_args,
           check_game_version=False)
 def cmd_queue(args, env) -> int:
     store = Q.Store(args.queue_dir if args.queue_dir is not None else env.cache_dir / "queue")
@@ -192,9 +197,20 @@ def _dispatch(args, env, store: Q.Store) -> int:
         order = store.move(args.job, to)
         print("queue: " + ", ".join(f"{j.id} {j.name}" for j in order))
         return 0
+    if what == "blender":
+        if env.blender is None:
+            raise Q.QueueError("No Blender found: set it with --blender, SE2_BLENDER or config blender.")
+        if args.blend_file is not None and not args.blend_file.is_file():
+            raise Q.QueueError(f"There is no file {args.blend_file}.")
+        job = store.submit_blender(env.blender, args.blend_file, gpu=args.gpu)
+        print(job.id)
+        Q.ensure_runner(store)
+        if store.paused:
+            print("the queue is paused: Blender starts once it is resumed (se2mod queue resume)", file=sys.stderr)
+        return 0
     if what == "gui":
         from .. import queue_gui
-        return queue_gui.main(store, _settings(env))
+        return queue_gui.main(store, _settings(env), env.blender)
     if what == "run":
         return Q.Runner(store, _settings(env)).run(idle_exit=args.idle_exit)
     raise Q.QueueError(f"unknown queue command {what}")

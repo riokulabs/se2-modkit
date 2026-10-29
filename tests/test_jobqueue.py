@@ -521,3 +521,22 @@ def test_clear_finished_keeps_jobs_that_just_ended(tmp_path):
         store.save(job)
     assert store.clear_finished(now=200.0) == 1                                 # "new" ended 5 s ago and stays
     assert store.load(old.id) is None and store.load(new.id) and store.load(waiting.id)
+
+
+def test_live_blender_session_jumps_the_queue_and_is_one_at_a_time(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    first = store.submit(["true"], name="render", environ={})
+    blend = tmp_path / "hero.blend"
+    blend.write_bytes(b"")
+    job = store.submit_blender("/opt/blender/blender", blend, environ={})
+    assert job.kind == "blender" and job.name == "blender hero.blend" and job.load == Q.HEAVY
+    assert [j.id for j in store.queued()] == [job.id, first.id]                # next in line
+    assert job.argv[:6] == ["/opt/blender/blender", "--online-mode", "--gpu-backend", "vulkan", "--gpu-device", "{gpu}"]
+    assert job.argv[6] == str(blend.resolve()) and job.argv[-2:] == [
+        "--python", str(Path(Q.__file__).with_name("blender_live.py"))]
+    assert store.live_blender().id == job.id
+    with pytest.raises(Q.QueueError, match="already queued"):
+        store.submit_blender("/opt/blender/blender", environ={})
+    store.cancel([job.id])
+    assert store.live_blender() is None
+    assert "--python" in Q.blender_session_argv("blender") and len(Q.blender_session_argv("blender")) == 8

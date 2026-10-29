@@ -23,6 +23,7 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 | `se2mod queue clear` | Delete finished jobs and their logs; jobs that ended in the last 10 s stay, so a tool waiting on one still sees it |
 | `se2mod queue pause` / `resume` | Pause the queue (running jobs carry on, nothing new starts) or resume it |
 | `se2mod queue move ID --top \| --bottom \| --up \| --down \| --to N` | Move a waiting job within the queue (`--to 1` is next to start) |
+| `se2mod queue blender [FILE.blend] [--gpu auto\|N]` | Start a live, windowed Blender as a queue job, next in line (see below) |
 | `se2mod queue gui` | Open a window on the queue and the GPUs (see below) |
 | `se2mod queue run [--idle-exit S]` | Run the runner in the foreground (for debugging; `submit` normally starts it) |
 
@@ -121,6 +122,17 @@ Waiting jobs start in submit order unless one was moved: `move` gives every wait
 join at the end. While the queue is paused (`<queue folder>/paused` exists), the runner keeps running jobs going and
 stays up, but starts nothing.
 
+## Live Blender sessions
+
+`se2mod queue blender` queues the configured Blender with a window, on the GPU the queue picks, with online access on
+so the Blender Lab MCP add-on starts its server (it autostarts by default). The session goes to the front of the queue
+but still waits for running jobs; once it starts it holds the heavy slot, so renders and exports wait until it closes.
+Only one session can be queued or running at a time, because each would want the same MCP port.
+
+Close it by hand, or cancel its job: the queue's SIGTERM makes Blender save the open file first (a file that was never
+saved goes to `~/.cache/se2modkit/live-blender/`) and quit. A tool that needs Blender open waits for the job to run,
+then talks to it through the MCP add-on, and the maintainer can watch the window as it works.
+
 ## The queue window
 
 `se2mod queue gui` opens a small Qt window that refreshes every second. It needs PySide6: `pip install
@@ -131,7 +143,7 @@ stays up, but starts nothing.
 - **Jobs:** running jobs, then waiting jobs in the order they will start (`waiting #1` is next), with load, GPU,
   elapsed time, exit code and a running job's last output line. **Show finished** adds the last 15 finished jobs (the
   window remembers the choice); **Clear finished** deletes them, as `se2mod queue clear` does.
-- **Controls:** pause or resume the queue, move the selected waiting job to the top, up, down or to the bottom
+- **Controls:** start or stop a live Blender session, pause or resume the queue, move the selected waiting job to the top, up, down or to the bottom
   (Ctrl+Home, Ctrl+Up, Ctrl+Down, Ctrl+End), and cancel the selected job (Delete; a running one asks first).
 - **Log:** the selected job's output, following it as it grows.
 

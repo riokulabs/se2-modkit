@@ -98,10 +98,10 @@ def tail(path: Path, lines: int = LOG_LINES) -> str:
 
 # --- the window -----------------------------------------------------------------------------------------------------
 
-def main(store: Q.Store, settings: Q.Settings | None = None) -> int:
+def main(store: Q.Store, settings: Q.Settings | None = None, blender: Path | None = None) -> int:
     try:
         from . import _queue_qt
     except ImportError as e:
         print(f"error: the queue window needs PySide6 ({e}); install it with: pip install 'se2modkit[gui]'")
         return 1
-    return _queue_qt.run(store, settings or Q.Settings())
+    return _queue_qt.run(store, settings or Q.Settings(), blender)

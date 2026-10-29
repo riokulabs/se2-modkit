@@ -137,6 +137,7 @@ class JobRecord:
     cancel: bool = False                 # cancel requested
     stopping: str = ""                   # "cancel" or "timeout" once the runner signalled the job
     rank: float | None = None            # place in the queue once a job was moved (else its id)
+    kind: str = ""                       # "blender": a live, windowed Blender session (see blender_session_argv)
 
     @property
     def final(self) -> bool:
@@ -154,6 +155,15 @@ class JobRecord:
         if self.started is None:
             return None
         return (self.ended if self.ended is not None else now) - self.started
+
+
+def blender_session_argv(blender: Path | str, blend_file: Path | str | None = None) -> list[str]:
+    """A windowed Blender on the queue's GPU with online access on, so the MCP add-on starts its server (it
+    autostarts by default), opening `blend_file` if given. `blender_live.py` makes a stop from the queue save first."""
+    argv = [str(blender), "--online-mode", "--gpu-backend", "vulkan", "--gpu-device", "{gpu}"]
+    if blend_file:
+        argv.append(str(Path(blend_file).resolve()))
+    return argv + ["--python", str(Path(__file__).with_name("blender_live.py"))]
 
 
 def queue_key(job: JobRecord) -> tuple[float, int]:
@@ -297,7 +307,7 @@ class Store:
 
     def submit(self, argv: list[str], *, name: str = "", load: float = HEAVY, gpu: str | int = "auto",
                cwd: Path | str | None = None, timeout: float | None = None, env: Mapping[str, str] | None = None,
-               environ: Mapping[str, str] = os.environ) -> JobRecord:
+               environ: Mapping[str, str] = os.environ, kind: str = "") -> JobRecord:
         """Add a job; returns it with its new id. `environ` is the submitter's environment (see CAPTURED_ENV)."""
         if not argv:
             raise QueueError("Nothing to run: put the command after --.")
@@ -313,7 +323,7 @@ class Store:
             counter.write_text(f"{job_id + 1}\n", encoding="utf-8", newline="\n")
             job = JobRecord(id=job_id, argv=list(argv), name=name or Path(argv[0]).name, load=load, gpu_req=gpu,
                             cwd=str(Path(cwd if cwd is not None else os.getcwd()).resolve()), timeout=timeout,
-                            env=job_env, submitted=time.time())
+                            env=job_env, submitted=time.time(), kind=kind)
             self.save(job)
         return job
 
@@ -332,6 +342,21 @@ class Store:
                 self.save(job)
                 changed.append(job)
         return changed
+
+    def live_blender(self) -> JobRecord | None:
+        """The live Blender session that is waiting or running, if any (there is at most one: they share a port)."""
+        return next((j for j in self.all() if j.kind == "blender" and not j.final), None)
+
+    def submit_blender(self, blender: Path | str, blend_file: Path | str | None = None, *, gpu: str | int = "auto",
+                       environ: Mapping[str, str] = os.environ) -> JobRecord:
+        """Queue a live Blender session at the front of the queue (it still waits for running jobs to finish)."""
+        if (live := self.live_blender()) is not None:
+            raise QueueError(f"A live Blender is already {live.state} as job {live.id}; stop it first.")
+        name = "blender" + (f" {Path(blend_file).name}" if blend_file else "")
+        job = self.submit(blender_session_argv(blender, blend_file), name=name, load=HEAVY, gpu=gpu,
+                          environ=environ, kind="blender")
+        self.move(job.id, 0)
+        return self.load(job.id) or job
 
     def queued(self) -> list[JobRecord]:
         """The waiting jobs, in the order they will start."""
