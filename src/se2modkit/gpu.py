@@ -21,8 +21,9 @@ from pathlib import Path
 
 from .env import procs
 
-__all__ = ["BLENDER_PROCS", "Gpu", "GpuStats", "blender_processes", "describe", "least_busy", "parse_vulkan_names",
-           "parse_vulkaninfo", "read_stats", "sample", "supported", "vulkan_devices"]
+__all__ = ["BLENDER_PROCS", "Gpu", "GpuStats", "ProcGpu", "blender_processes", "describe", "least_busy",
+           "parse_vulkan_names", "parse_vulkaninfo", "process_gpu", "read_stats", "sample", "supported",
+           "vulkan_devices"]
 
 SYSFS = Path("/sys/bus/pci/devices")
 BLENDER_PROCS = ("blender", "blender.exe")
@@ -188,3 +189,54 @@ def read_stats(devices: list[tuple[int, str, str]], sysfs: Path = SYSFS) -> list
                             vram_total=_read_int(node / "mem_info_vram_total"),
                             temp=temp, temp_hot=temp_hot, power=power, power_cap=cap, fan=fan))
     return out
+
+
+@dataclass
+class ProcGpu:
+    """What a set of processes holds on one GPU: VRAM in bytes and cumulative engine busy time (graphics plus
+    compute) in nanoseconds."""
+    vram: int = 0
+    busy_ns: int = 0
+
+
+_ENGINES = ("drm-engine-gfx", "drm-engine-compute")
+
+
+def process_gpu(pids, proc: Path = Path("/proc")) -> dict[str, ProcGpu]:
+    """{PCI address: ProcGpu} for the processes `pids`, from the kernel's per-client DRM accounting (fdinfo of each
+    open GPU file; Linux 5.19+ with amdgpu, i915, xe, msm and others). A client opened through several files counts
+    once."""
+    out: dict[str, ProcGpu] = {}
+    seen: set[tuple[str, str]] = set()
+    for pid in pids:
+        try:
+            fds = list((proc / str(pid) / "fdinfo").iterdir())
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                text = fd.read_text()
+            except OSError:
+                continue
+            if "drm-pdev" not in text:
+                continue
+            fields = dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
+            fields = {k.strip(): v.strip() for k, v in fields.items()}
+            key = (fields.get("drm-pdev", ""), fields.get("drm-client-id", fd.name))
+            if key in seen:
+                continue
+            seen.add(key)
+            use = out.setdefault(key[0], ProcGpu())
+            vram = fields.get("drm-memory-vram") or fields.get("drm-total-vram") or "0 KiB"
+            use.vram += _bytes(vram)
+            use.busy_ns += sum(int(fields.get(e, "0 ns").split()[0]) for e in _ENGINES if e in fields)
+    return out
+
+
+def _bytes(text: str) -> int:
+    num, _, unit = text.partition(" ")
+    scale = {"KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3}.get(unit.strip(), 1)
+    try:
+        return int(num) * scale
+    except ValueError:
+        return 0

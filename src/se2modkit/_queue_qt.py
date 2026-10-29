@@ -96,6 +96,7 @@ class QueueWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.store, self.settings, self.devices, self.blender = store, settings, devices, blender
         self.selected: int | None = None
+        self.sampler = G.JobSampler()
         self.shown_log: tuple[int, int] | None = None
         self.setWindowTitle("se2mod queue")
         self.resize(1180, 820)
@@ -186,7 +187,7 @@ class QueueWindow(QtWidgets.QMainWindow):
         self.tree.setUniformRowHeights(True)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        for i, width in enumerate((56, 240, 70, 120, 50, 80, 50, 300)):
+        for i, width in enumerate((56, 230, 64, 110, 44, 64, 70, 70, 76, 44, 260)):
             self.tree.setColumnWidth(i, width)
         self.tree.header().setStretchLastSection(True)
         self.tree.itemSelectionChanged.connect(self.on_select)
@@ -324,13 +325,15 @@ class QueueWindow(QtWidgets.QMainWindow):
             by_id = {j.id: j for j in jobs}
             rows = G.ordered_jobs(jobs, G.FINISHED_SHOWN if self.show_done.isChecked() else 0)
             places = {j.id: i + 1 for i, j in enumerate(j for j in rows if j.state == "queued")}
+            usage = self.sampler.sample(jobs)
 
             self.tree.blockSignals(True)
             scroll = self.tree.verticalScrollBar().value()
             self.tree.clear()
             muted = self.palette().color(QtGui.QPalette.ColorRole.PlaceholderText)
             for job in rows:
-                item = QtWidgets.QTreeWidgetItem(list(G.job_row(self.store, job, places.get(job.id), now)))
+                item = QtWidgets.QTreeWidgetItem(list(G.job_row(self.store, job, places.get(job.id), now,
+                                                                usage.get(job.id))))
                 color = STATE_COLORS.get(job.state)
                 if job.state == "done" and job.exit == 0:
                     for c in range(len(G.COLUMNS)):

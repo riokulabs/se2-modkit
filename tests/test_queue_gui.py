@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from se2modkit import gpu as gpumod
 from se2modkit import jobqueue as Q
 from se2modkit import queue_gui as G
@@ -27,7 +29,7 @@ def test_rows_show_running_then_queue_order_then_newest_finished(tmp_path):
     assert [j.id for j in jobs] == [run.id, w2.id, w1.id, old.id]
     assert G.job_row(store, store.load(w2.id), 1, 20.0)[3:5] == ("waiting #1", "-")
     row = G.job_row(store, store.load(run.id), None, 20.0)
-    assert row[3:6] == ("running", "1", Q.format_elapsed(10.0))
+    assert row[3:5] == ("running", "1") and row[8] == Q.format_elapsed(10.0)
 
 
 def test_gpu_summary_names_the_jobs_on_each_card(tmp_path):
@@ -96,3 +98,36 @@ def test_qt_window_lists_jobs_and_moves_them(tmp_path, monkeypatch):
     finally:
         win.timer.stop()
         win.close()
+
+
+def _fake_proc(root, pid, pgid, ticks, fdinfo=None):
+    d = root / str(pid)
+    (d / "fdinfo").mkdir(parents=True)
+    rest = ["S", "1", str(pgid)] + ["0"] * 8 + [str(ticks), "0"] + ["0"] * 10
+    (d / "stat").write_text(f"{pid} (blender) " + " ".join(rest) + "\n")
+    for i, text in enumerate(fdinfo or []):
+        (d / "fdinfo" / str(10 + i)).write_text(text)
+
+
+def test_job_sampler_measures_cpu_gpu_and_vram(tmp_path):
+    proc = tmp_path / "proc"
+    gpu_fd = ("drm-driver:\tamdgpu\ndrm-client-id:\t7\ndrm-pdev:\t0000:09:00.0\n"
+              "drm-memory-vram:\t1048576 KiB\ndrm-engine-gfx:\t{ns} ns\n")
+    _fake_proc(proc, 500, 500, 100, [gpu_fd.format(ns=0), gpu_fd.format(ns=0)])   # one client, two files
+    _fake_proc(proc, 501, 500, 50)                                                # a child in the job's group
+    _fake_proc(proc, 900, 900, 7)                                                 # someone else
+    store = Q.Store(tmp_path / "q")
+    job = _job(store, "render", state="running", gpu=1, started=1.0, pid=500)
+    clock = iter([10.0, 12.0])
+    sampler = G.JobSampler(proc, clock=lambda: next(clock), tick=100)
+    first = sampler.sample([job])[job.id]
+    assert first.gpu is None and first.vram == 1024 ** 3                       # deduped by client id
+    (proc / "500" / "stat").write_text("500 (blender) S 1 500 " + " ".join(["0"] * 8) + " 300 0 " +
+                                       " ".join(["0"] * 10) + "\n")
+    for fd in (proc / "500" / "fdinfo").iterdir():
+        fd.write_text(gpu_fd.format(ns=500_000_000))
+    second = sampler.sample([job])[job.id]
+    assert second.cpu == pytest.approx(100.0)            # 200 ticks at 100 Hz over 2 s: one core
+    assert second.gpu == pytest.approx(25.0)             # 0.5 s of engine time over 2 s
+    row = G.job_row(store, store.load(job.id), None, 20.0, second)
+    assert row[5:8] == ("100 %", "25 %", "1.0 GB")

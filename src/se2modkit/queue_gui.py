@@ -11,7 +11,9 @@ The window is Qt (PySide6, the optional `gui` extra) in its Fusion style with th
 
 from __future__ import annotations
 
+import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import gpu as gpumod
@@ -21,9 +23,9 @@ from . import progress
 REFRESH_MS = 1000
 FINISHED_SHOWN = 15
 LOG_LINES = 200
-COLUMNS = ("id", "name", "load", "state", "gpu", "elapsed", "exit", "last")
-HEADINGS = {"id": "ID", "name": "Name", "load": "Load", "state": "State", "gpu": "GPU", "elapsed": "Elapsed",
-            "exit": "Exit", "last": "Last output"}
+COLUMNS = ("id", "name", "load", "state", "gpu", "cpu", "gpu_use", "vram", "elapsed", "exit", "last")
+HEADINGS = {"id": "ID", "name": "Name", "load": "Load", "state": "State", "gpu": "GPU", "cpu": "CPU",
+            "gpu_use": "GPU use", "vram": "VRAM", "elapsed": "Elapsed", "exit": "Exit", "last": "Last output"}
 
 
 # --- plain formatting (no Tk) ---------------------------------------------------------------------------------------
@@ -36,8 +38,10 @@ def ordered_jobs(jobs: list[Q.JobRecord], finished: int = FINISHED_SHOWN) -> lis
     return running + waiting + done
 
 
-def job_row(store: Q.Store, job: Q.JobRecord, place: int | None, now: float) -> tuple[str, ...]:
-    """The table cells of one job. `place` is its place in the queue (1 = next to start) for a waiting job."""
+def job_row(store: Q.Store, job: Q.JobRecord, place: int | None, now: float,
+            usage: JobUsage | None = None) -> tuple[str, ...]:
+    """The table cells of one job. `place` is its place in the queue (1 = next to start) for a waiting job; `usage`
+    is a running job's measured CPU, GPU and VRAM (JobSampler)."""
     if job.state == "queued":
         state = "cancelling" if job.cancel else f"waiting #{place}"
         dev = "-"
@@ -45,8 +49,82 @@ def job_row(store: Q.Store, job: Q.JobRecord, place: int | None, now: float) -> 
         state = job.state + (" (stopping)" if job.cancel and not job.final else "")
         dev = "none" if job.gpu is None else str(job.gpu)
     last = progress.last_line(store.log_path(job.id), 90) if job.state == "running" else ""
-    return (str(job.id), job.name, Q.load_label(job.load), state, dev, Q.format_elapsed(job.elapsed(now)),
-            "-" if job.exit is None else str(job.exit), last)
+    cpu = gpu_use = vram = ""
+    if usage is not None:
+        cpu = f"{usage.cpu:.0f} %"
+        gpu_use = "" if usage.gpu is None else f"{usage.gpu:.0f} %"
+        vram = f"{usage.vram / 1024 ** 3:.1f} GB" if usage.vram else ""
+    return (str(job.id), job.name, Q.load_label(job.load), state, dev, cpu, gpu_use, vram,
+            Q.format_elapsed(job.elapsed(now)), "-" if job.exit is None else str(job.exit), last)
+
+
+@dataclass
+class JobUsage:
+    cpu: float               # percent of one core (400 = four cores busy)
+    gpu: float | None        # percent of the job's GPU engine time; None before a second sample
+    vram: int                # bytes the job holds on its GPU
+
+
+def group_pids(pgid: int, proc: Path = Path("/proc")) -> list[int]:
+    """Every process in process group `pgid` (a queue job and all its children)."""
+    out = []
+    for d in proc.iterdir():
+        if not d.name.isdigit():
+            continue
+        try:
+            stat = (d / "stat").read_text()
+        except OSError:
+            continue
+        fields = stat[stat.rfind(")") + 2:].split()
+        if len(fields) > 2 and fields[2] == str(pgid):
+            out.append(int(d.name))
+    return out
+
+
+def cpu_ticks(pids, proc: Path = Path("/proc")) -> int:
+    total = 0
+    for pid in pids:
+        try:
+            stat = (proc / str(pid) / "stat").read_text()
+        except OSError:
+            continue
+        fields = stat[stat.rfind(")") + 2:].split()
+        total += int(fields[11]) + int(fields[12])         # utime + stime
+    return total
+
+
+class JobSampler:
+    """CPU, GPU and VRAM of each running job, measured between two samples (Linux; elsewhere nothing)."""
+
+    def __init__(self, proc: Path = Path("/proc"), clock=time.monotonic, tick: float | None = None):
+        self.proc, self.clock = proc, clock
+        self.tick = tick or (os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100)
+        self.last: dict[int, tuple[float, int, int]] = {}
+
+    def sample(self, jobs: list[Q.JobRecord]) -> dict[int, JobUsage]:
+        if not self.proc.is_dir():
+            return {}
+        now, out, keep = self.clock(), {}, {}
+        for job in jobs:
+            if job.state != "running" or not job.pid:
+                continue
+            pids = group_pids(job.pid, self.proc)
+            if not pids:
+                continue
+            ticks = cpu_ticks(pids, self.proc)
+            on = gpumod.process_gpu(pids, self.proc)
+            use = max(on.values(), key=lambda u: u.vram) if on else gpumod.ProcGpu()   # the card it works on
+            prev = self.last.get(job.id)
+            keep[job.id] = (now, ticks, use.busy_ns)
+            if prev is None or now <= prev[0]:
+                out[job.id] = JobUsage(0.0, None, use.vram)
+                continue
+            dt = now - prev[0]
+            cpu = 100.0 * (ticks - prev[1]) / self.tick / dt
+            busy = 100.0 * (use.busy_ns - prev[2]) / 1e9 / dt
+            out[job.id] = JobUsage(max(cpu, 0.0), min(max(busy, 0.0), 100.0), use.vram)
+        self.last = keep
+        return out
 
 
 def gb(n: int | None) -> str:
