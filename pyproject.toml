@@ -16,6 +16,7 @@ dependencies = ["numpy"]
 publish = []  # Pillow is optional, used only for thumbnails when installed
 diag = []
 preview = ["Pillow"]
+gui = ["PySide6-Essentials>=6.7"]  # se2mod queue gui
 dev = ["pytest", "pytest-xdist", "ruff", "Pillow"]
 
 [project.scripts]

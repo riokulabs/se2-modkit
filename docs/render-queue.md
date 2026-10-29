@@ -20,6 +20,10 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 | `se2mod queue status` (or `list`) | One line per job: ID, name, load, state, GPU, elapsed time, exit code; a running job also shows its last log line. `--all` shows every kept job |
 | `se2mod queue log ID [-f]` | Print a job's output; `-f` keeps printing until the job ends |
 | `se2mod queue cancel ID... \| --all` | Cancel jobs: a queued job is dropped, a running one gets SIGTERM on its process group and SIGKILL 10 s later |
+| `se2mod queue clear` | Delete finished jobs and their logs; jobs that ended in the last 10 s stay, so a tool waiting on one still sees it |
+| `se2mod queue pause` / `resume` | Pause the queue (running jobs carry on, nothing new starts) or resume it |
+| `se2mod queue move ID --top \| --bottom \| --up \| --down \| --to N` | Move a waiting job within the queue (`--to 1` is next to start) |
+| `se2mod queue gui` | Open a window on the queue and the GPUs (see below) |
 | `se2mod queue run [--idle-exit S]` | Run the runner in the foreground (for debugging; `submit` normally starts it) |
 
 `submit` options:
@@ -100,7 +104,11 @@ card.
 
 ## The runner
 
-`submit` starts the runner in the background when none is running. It keeps running after the submitting shell exits,
+`submit` starts the runner in the background when none is running. Where a systemd user manager runs (most Linux
+desktops), the runner is its own user service, `se2mod-queue-<hash>.service`, so its jobs don't share a cgroup with the
+app that submitted them: restarting that app neither stops the runner nor makes the kernel move days of the jobs' file
+cache to another cgroup, which can stall disk writes for many minutes. Elsewhere it is a detached process. It keeps
+running after the submitting shell exits,
 writes one line when a job starts (with its GPU) and one when it ends to `<queue folder>/runner.log`, and exits after
 `idle_exit` seconds with nothing to do. Only one runner runs at a time: it holds `runner.lock` (which contains its PID)
 for its whole life; a second one exits at once.
@@ -109,10 +117,30 @@ Jobs run in their own process group. Stopping the runner (SIGTERM or Ctrl-C on `
 on Linux a job also gets SIGTERM if the runner is killed outright. A job still marked running when a new runner starts
 is reported as `lost`.
 
+Waiting jobs start in submit order unless one was moved: `move` gives every waiting job a rank, and new jobs still
+join at the end. While the queue is paused (`<queue folder>/paused` exists), the runner keeps running jobs going and
+stays up, but starts nothing.
+
+## The queue window
+
+`se2mod queue gui` opens a small Qt window that refreshes every second. It needs PySide6: `pip install
+'se2modkit[gui]'`.
+
+- **GPUs:** each card's load, VRAM in use, edge and hot-spot temperature, power against its cap, fan speed, and which
+  queue jobs run on it (Linux with the amdgpu driver; elsewhere the panel says the readings aren't available).
+- **Jobs:** running jobs, then waiting jobs in the order they will start (`waiting #1` is next), with load, GPU,
+  elapsed time, exit code and a running job's last output line. **Show finished** adds the last 15 finished jobs (the
+  window remembers the choice); **Clear finished** deletes them, as `se2mod queue clear` does.
+- **Controls:** pause or resume the queue, move the selected waiting job to the top, up, down or to the bottom
+  (Ctrl+Home, Ctrl+Up, Ctrl+Down, Ctrl+End), and cancel the selected job (Delete; a running one asks first).
+- **Log:** the selected job's output, following it as it grows.
+
+The window works on the queue folder like the command line does, so it can stay open while tools submit and wait.
+
 ## Storage
 
-`<cache>/queue/` holds one JSON file and one log per job under `jobs/`, plus `queue.lock`, `runner.lock` and
-`runner.log`. Every change to a job file happens under a file lock (flock on Linux and macOS, msvcrt on Windows), so
+`<cache>/queue/` holds one JSON file and one log per job under `jobs/`, plus `queue.lock`, `runner.lock`,
+`runner.log` and, while the queue is paused, `paused`. Every change to a job file happens under a file lock (flock on Linux and macOS, msvcrt on Windows), so
 several submitters and the runner can work at once. Finished jobs are deleted after seven days.
 
 ## Job states

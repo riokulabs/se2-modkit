@@ -21,8 +21,8 @@ from pathlib import Path
 
 from .env import procs
 
-__all__ = ["BLENDER_PROCS", "Gpu", "blender_processes", "least_busy", "parse_vulkaninfo", "sample", "supported",
-           "vulkan_devices"]
+__all__ = ["BLENDER_PROCS", "Gpu", "GpuStats", "blender_processes", "describe", "least_busy", "parse_vulkan_names",
+           "parse_vulkaninfo", "read_stats", "sample", "supported", "vulkan_devices"]
 
 SYSFS = Path("/sys/bus/pci/devices")
 BLENDER_PROCS = ("blender", "blender.exe")
@@ -64,15 +64,38 @@ def parse_vulkaninfo(text: str, sysfs: Path = SYSFS) -> list[tuple[int, str]]:
     return devs
 
 
+def parse_vulkan_names(text: str) -> dict[int, str]:
+    """{Vulkan index: device name} from `vulkaninfo` output, without the driver's note in brackets."""
+    names: dict[int, str] = {}
+    idx = None
+    for line in text.splitlines():
+        if m := re.match(r"^GPU(\d+):", line):
+            idx = int(m.group(1))
+        elif idx is not None and idx not in names and (m := re.search(r"deviceName\s*=\s*(.+)", line)):
+            names[idx] = re.sub(r"\s*\(.*\)\s*$", "", m.group(1).strip())
+    return names
+
+
+def _vulkaninfo() -> str:
+    if not supported():
+        return ""
+    try:
+        return subprocess.run(["vulkaninfo"], capture_output=True, text=True, timeout=30, check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def vulkan_devices(sysfs: Path = SYSFS) -> list[tuple[int, str]]:
     """[(Vulkan index, PCI address)] of the real GPUs; empty when `vulkaninfo` is missing or this is not Linux."""
-    if not supported():
-        return []
-    try:
-        out = subprocess.run(["vulkaninfo"], capture_output=True, text=True, timeout=30, check=False).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
-    return parse_vulkaninfo(out, sysfs)
+    out = _vulkaninfo()
+    return parse_vulkaninfo(out, sysfs) if out else []
+
+
+def describe(sysfs: Path = SYSFS) -> list[tuple[int, str, str]]:
+    """[(Vulkan index, PCI address, name)] of the real GPUs (one `vulkaninfo` call; cache the result)."""
+    out = _vulkaninfo()
+    names = parse_vulkan_names(out)
+    return [(i, addr, names.get(i, "")) for i, addr in parse_vulkaninfo(out, sysfs)] if out else []
 
 
 def _read_int(path: Path) -> int | None:
@@ -114,3 +137,54 @@ def least_busy(gpus: list[Gpu]) -> int | None:
 def blender_processes() -> list[tuple[int, str]]:
     """(pid, command line) of every running Blender."""
     return procs.find_processes(BLENDER_PROCS)
+
+
+@dataclass(frozen=True)
+class GpuStats:
+    """One reading of a GPU's state, for display. Any value the driver doesn't report is None."""
+    index: int
+    addr: str
+    name: str = ""
+    busy: int | None = None          # percent, this instant
+    vram_used: int | None = None     # bytes
+    vram_total: int | None = None    # bytes
+    temp: float | None = None        # degrees C at the edge sensor (or the first sensor)
+    temp_hot: float | None = None    # degrees C at the hottest point (junction), where reported
+    power: float | None = None       # watts
+    power_cap: float | None = None   # watts
+    fan: int | None = None           # rpm
+
+
+def _hwmon(node: Path) -> Path | None:
+    found = sorted(node.glob("hwmon/hwmon*"))
+    return found[0] if found else None
+
+
+def read_stats(devices: list[tuple[int, str, str]], sysfs: Path = SYSFS) -> list[GpuStats]:
+    """A reading of every GPU in `devices` (from `describe`): load, VRAM, temperatures, power and fan."""
+    out = []
+    for index, addr, name in devices:
+        node = sysfs / addr
+        temps: dict[str, float] = {}
+        temp = temp_hot = power = cap = fan = None
+        if (mon := _hwmon(node)) is not None:
+            for t in sorted(mon.glob("temp*_input")):
+                raw = _read_int(t)
+                if raw is None:
+                    continue
+                label_file = t.with_name(t.name.replace("_input", "_label"))
+                label = label_file.read_text().strip() if label_file.exists() else t.name
+                temps[label] = raw / 1000.0
+            temp = temps.get("edge", next(iter(temps.values()), None))
+            temp_hot = temps.get("junction")
+            uw = _read_int(mon / "power1_average")
+            uw = uw if uw is not None else _read_int(mon / "power1_input")
+            power = None if uw is None else uw / 1e6
+            cap_uw = _read_int(mon / "power1_cap")
+            cap = None if cap_uw is None else cap_uw / 1e6
+            fan = _read_int(mon / "fan1_input")
+        out.append(GpuStats(index, addr, name, busy=_read_int(node / "gpu_busy_percent"),
+                            vram_used=_read_int(node / "mem_info_vram_used"),
+                            vram_total=_read_int(node / "mem_info_vram_total"),
+                            temp=temp, temp_hot=temp_hot, power=power, power_cap=cap, fan=fan))
+    return out

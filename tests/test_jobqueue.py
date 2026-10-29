@@ -460,3 +460,64 @@ def test_spawn_runner_falls_back_to_a_detached_child(tmp_path, monkeypatch):
     monkeypatch.setattr(Q.subprocess, "Popen", lambda argv, **kw: started.append((argv, kw)) or "proc")
     assert Q.spawn_runner(tmp_path) == "proc"
     assert started[0][0] == Q.runner_command(tmp_path) and started[0][1].get("start_new_session")
+
+
+def test_move_reorders_waiting_jobs(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    a, b, c = (store.submit(["true"], name=n, environ={}) for n in "abc")
+    assert [j.id for j in store.queued()] == [a.id, b.id, c.id]
+    assert [j.id for j in store.move(c.id, 0)] == [c.id, a.id, b.id]
+    assert [j.id for j in store.move(c.id, 99)] == [a.id, b.id, c.id]          # clamped to the end
+    d = store.submit(["true"], name="d", environ={})
+    assert [j.id for j in store.queued()] == [a.id, b.id, c.id, d.id]         # a new job still joins at the end
+    store.cancel([b.id])
+    with pytest.raises(Q.QueueError):
+        store.move(b.id, 0)                                                     # only waiting jobs move
+
+
+def test_plan_starts_the_moved_job_first(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    a, b = store.submit(["true"], name="a", environ={}), store.submit(["true"], name="b", environ={})
+    store.move(b.id, 0)
+    started = Q.plan(store.queued(), [], outside=0.0, gpus=[], settings=Q.Settings())
+    assert [j.id for j, _ in started] == [b.id]                                 # heavy jobs: one at a time
+
+
+@posix
+def test_paused_queue_starts_nothing_and_resumes(runner):
+    runner.store.set_paused(True)
+    job = runner.store.submit(_py("print('hi')"), name="later", environ={})
+    assert runner.tick() is True                                                # stays up while a job waits
+    assert _state(runner, job.id) == "queued"
+    runner.store.set_paused(False)
+    _spin(runner, lambda: runner.store.load(job.id).final)
+    assert _state(runner, job.id) == "done"
+
+
+def test_cli_pause_move_and_status(tmp_path):
+    qdir = tmp_path / "q"
+    store = Q.Store(qdir)
+    env = dict(os.environ)
+
+    def _cli(*args):
+        return globals()["_cli"](*args, env=env)
+
+    a, b = store.submit(["true"], name="first", environ={}), store.submit(["true"], name="second", environ={})
+    assert _cli("queue", "--queue-dir", str(qdir), "pause").returncode == 0 and store.paused
+    m = _cli("queue", "--queue-dir", str(qdir), "move", str(b.id), "--top")
+    assert m.returncode == 0 and m.stdout.strip() == f"queue: {b.id} second, {a.id} first"
+    st = _cli("queue", "--queue-dir", str(qdir), "status").stdout.splitlines()
+    assert "queue PAUSED" in st[0] and [ln.split()[0] for ln in st[2:]] == [str(b.id), str(a.id)]
+    bad = _cli("queue", "--queue-dir", str(qdir), "move", "99", "--up")
+    assert bad.returncode == 1 and "not waiting" in bad.stderr
+    assert _cli("queue", "--queue-dir", str(qdir), "resume").returncode == 0 and not store.paused
+
+
+def test_clear_finished_keeps_jobs_that_just_ended(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    old, new, waiting = (store.submit(["true"], name=n, environ={}) for n in ("old", "new", "waiting"))
+    for job, ended in ((old, 100.0), (new, 195.0)):
+        job.state, job.ended = "done", ended
+        store.save(job)
+    assert store.clear_finished(now=200.0) == 1                                 # "new" ended 5 s ago and stays
+    assert store.load(old.id) is None and store.load(new.id) and store.load(waiting.id)

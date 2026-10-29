@@ -10,7 +10,8 @@ heavy load on an unknown GPU.
 
 Storage is a folder (normally `<cache>/queue`): `jobs/<id>.json` and `jobs/<id>.log` per job, `queue.lock` taken by
 everyone who changes a job file, `runner.lock` held by the one runner for its lifetime (it holds the runner's PID),
-`runner.log` for the runner's progress lines.
+`runner.log` for the runner's progress lines, and `paused` while the queue is paused (running jobs go on; nothing new
+starts). Waiting jobs start in queue order: by id, unless they were moved (`Store.move` gives every waiting job a rank).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from .env import procs
 LOADS = {"heavy": 1.0, "medium": 0.5, "light": 0.25}
 HEAVY = LOADS["heavy"]
 KILL_GRACE = 10.0             # seconds between SIGTERM and SIGKILL when a job is cancelled or times out
+CLEAR_GRACE = 10.0            # `clear` keeps jobs that finished this recently (a waiter may not have seen them yet)
 IDLE_EXIT = 600.0             # the runner exits after this long with nothing queued or running
 TICK = 0.5                    # runner poll interval, seconds
 SAMPLE_WINDOW = 1.0           # seconds of GPU load sampling before a placement
@@ -134,6 +136,7 @@ class JobRecord:
     exit: int | None = None
     cancel: bool = False                 # cancel requested
     stopping: str = ""                   # "cancel" or "timeout" once the runner signalled the job
+    rank: float | None = None            # place in the queue once a job was moved (else its id)
 
     @property
     def final(self) -> bool:
@@ -151,6 +154,11 @@ class JobRecord:
         if self.started is None:
             return None
         return (self.ended if self.ended is not None else now) - self.started
+
+
+def queue_key(job: JobRecord) -> tuple[float, int]:
+    """Sort key of waiting jobs: their rank once the queue was reordered, else their id (first come, first served)."""
+    return (job.rank if job.rank is not None else float(job.id), job.id)
 
 
 def exit_code(job: JobRecord) -> int:
@@ -325,14 +333,54 @@ class Store:
                 changed.append(job)
         return changed
 
-    def prune(self, older_than: float, now: float | None = None) -> None:
-        """Delete finished jobs (and their logs) that ended more than `older_than` seconds ago."""
+    def queued(self) -> list[JobRecord]:
+        """The waiting jobs, in the order they will start."""
+        return sorted((j for j in self.all() if j.state == "queued" and not j.cancel), key=queue_key)
+
+    def move(self, job_id: int, position: int) -> list[JobRecord]:
+        """Put waiting job `job_id` at `position` (0 = next to start; clamped to the queue) and return the new order."""
+        with self.lock():
+            order = self.queued()
+            job = next((j for j in order if j.id == job_id), None)
+            if job is None:
+                raise QueueError(f"Job {job_id} is not waiting in the queue, so it can't be moved.")
+            order.remove(job)
+            order.insert(max(0, min(position, len(order))), job)
+            for rank, j in enumerate(order):
+                if j.rank != rank:
+                    j.rank = float(rank)
+                    self.save(j)
+        return order
+
+    @property
+    def paused(self) -> bool:
+        return (self.root / "paused").exists()
+
+    def set_paused(self, paused: bool) -> None:
+        """Pause the queue (running jobs carry on, nothing new starts) or resume it."""
+        flag = self.root / "paused"
+        if paused:
+            self.root.mkdir(parents=True, exist_ok=True)
+            flag.write_text(f"{time.time()}\n", encoding="utf-8", newline="\n")
+        else:
+            flag.unlink(missing_ok=True)
+
+    def prune(self, older_than: float, now: float | None = None) -> int:
+        """Delete finished jobs (and their logs) that ended more than `older_than` seconds ago; how many went."""
         now = time.time() if now is None else now
+        gone = 0
         with self.lock():
             for job in self.all():
                 if job.final and job.ended is not None and now - job.ended > older_than:
                     for p in (self.job_file(job.id), self.log_path(job.id)):
                         p.unlink(missing_ok=True)
+                    gone += 1
+        return gone
+
+    def clear_finished(self, now: float | None = None) -> int:
+        """Delete the finished jobs, except those that ended in the last CLEAR_GRACE seconds: a tool waiting on one
+        polls every half second and must still find it. Returns how many went."""
+        return self.prune(CLEAR_GRACE, now)
 
     # the runner lock ---------------------------------------------------------------------------------------------
 
@@ -611,12 +659,14 @@ class Runner:
             waiting = [j for j in self.store.all() if j.state == "queued"]
         if not waiting:
             return bool(self.procs)
+        if self.store.paused:
+            return True                  # stay up while jobs wait; start nothing
         own = {p.pid for p in self.procs.values()}
         outside = self.outside(own)
         gpus = self.sampler() if any(j.gpu_req == "auto" for j in waiting) else []
         with self.store.lock():
             jobs = self.store.all()
-            waiting = [j for j in jobs if j.state == "queued" and not j.cancel]
+            waiting = sorted((j for j in jobs if j.state == "queued" and not j.cancel), key=queue_key)
             running = [j for j in jobs if j.state == "running"]
             for job, device in plan(waiting, running, outside=outside, gpus=gpus, settings=self.settings):
                 self._start(job, device)
