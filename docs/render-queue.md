@@ -130,7 +130,8 @@ but still waits for running jobs; once it starts it holds the heavy slot, so ren
 Only one session can be queued or running at a time, because each would want the same MCP port.
 
 Close it by hand, or cancel its job: the queue's SIGTERM makes Blender save the open file first (a file that was never
-saved goes to `~/.cache/se2modkit/live-blender/`) and quit. A tool that needs Blender open waits for the job to run,
+saved goes to `~/.cache/se2modkit/live-blender/`) and quit. It saves even when Blender doesn't flag the file as changed,
+because edits made through Python (the MCP add-on) don't flag it; the save keeps Blender's `.blend1` backup. A tool that needs Blender open waits for the job to run,
 then talks to it through the MCP add-on, and the maintainer can watch the window as it works.
 
 ## The queue window
