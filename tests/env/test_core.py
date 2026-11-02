@@ -27,6 +27,8 @@ def _linux_home(tmp_path: Path, *, with_prefix=True, with_pulsar=True) -> Path:
     tool = root / "compatibilitytools.d" / "SomeProton-1"
     tool.mkdir(parents=True)
     (tool / "proton").write_text("", encoding="utf-8")
+    (tool / "files/bin").mkdir(parents=True)
+    (tool / "files/bin/wine").write_text("", encoding="utf-8")
     if with_prefix:
         dd = root / "steamapps/compatdata/1133870/pfx/dosdevices"
         dd.mkdir(parents=True)
