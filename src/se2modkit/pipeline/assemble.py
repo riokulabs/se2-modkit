@@ -120,5 +120,6 @@ def placement(spec, lod0_objs, boxes, bounds):
                      for d, f in r["faces"].items()},
            "free_cells": [list(c) for c in r["free_cells"]],
            "inner_mounts": {d: [list(c) for c in f["inner_mount_cells"]] for d, f in r["faces"].items()},
-           "outside": r["occupied_outside_box"], "shift": r["shift"], "summary": PL.summary_line(spec.name, r)}
+           "outside": r["occupied_outside_box"], "shift": r["shift"], "cell_groups": r["occupancy_groups"],
+           "summary": PL.summary_line(spec.name, r)}
     return rep, r

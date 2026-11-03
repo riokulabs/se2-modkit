@@ -65,3 +65,13 @@ def test_mount_cells_count_and_list():
         assert isinstance(f["mount_cells"], int), d
         assert isinstance(f["mount_cell_list"], list) and len(f["mount_cell_list"]) == f["mount_cells"], d
         assert all(len(c) == 3 for c in f["mount_cell_list"])
+
+
+def test_cell_groups_of_a_box_and_a_staircase():
+    lo, hi = (-0.5, -1.5, -0.75), (0.25, 1.0, 0.5)
+    r = PL.analyse(box_tris(lo, hi), [("box", box_hull(lo, hi))], bounds=((-1, -5, -2), (1, 4, 2)))
+    assert r["occupancy_groups"] == 1
+    # a ramp of n steps in (y, z), 3 cells wide in x: one box per step
+    n = 6
+    stairs = [(x, y, z) for x in range(3) for y in range(n) for z in range(n) if z <= y]
+    assert len(PL.build_groups(sorted(stairs, key=lambda c: (c[2], c[1], c[0])))) == n

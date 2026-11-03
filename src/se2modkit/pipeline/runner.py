@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 
+from ..model import limits
 from . import incremental as IN
 from . import report as RP
 from .hooks import HooksError, ModHooks
@@ -285,8 +286,21 @@ class Runner:
         if self.bounds is None:
             raise SystemExit("--check-placement needs the runner's bounds=fn(spec) -> cell bounds.")
         models = Path(self.hooks.paths.models)
-        return [PC.check(self.hooks, s, self.bounds(s), analyse=partial(self.analyse, s) if self.analyse else None)
-                for s in specs if (models / s.name / "export.json").is_file()]
+        out = [(s, PC.check(self.hooks, s, self.bounds(s), analyse=partial(self.analyse, s) if self.analyse else None))
+               for s in specs if (models / s.name / "export.json").is_file()]
+        errors = [e for s, c in out
+                  if (e := limits.cell_groups_error(s.name, ((c or {}).get("nonfractured") or {}).get("cell_groups", 0)))]
+        if errors:
+            raise SystemExit("\n".join(errors))
+        return [c for _, c in out]
+
+    @staticmethod
+    def check_cell_groups(spec, entry):
+        """Stop the build when the block's occupied cells form more groups than the game handles (a mod's own
+        placement entry without a `cell_groups` count passes)."""
+        error = limits.cell_groups_error(spec.name, entry.get("placement", {}).get("cell_groups", 0))
+        if error:
+            raise SystemExit(error)
 
     @staticmethod
     def require_blender():
@@ -450,6 +464,7 @@ class Runner:
         mod_dir = self.mod_dir()
         with IN.recording(own=self.own_code(spec), outputs=outputs, mod_dir=mod_dir) as seen:
             entry = self.build_block(spec, render)
+            self.check_cell_groups(spec, entry)
             entry["zfight"] = self.audit(spec)
         print(f"built {spec.name}")
         # read outside any block (e.g. a catalogue's data file): every block; read by shared code while some block
