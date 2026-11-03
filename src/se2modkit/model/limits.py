@@ -70,8 +70,9 @@ def max_materials(size, lod, total_lods, fractured=False):
 # A block's occupied cells are stored on the grid as boxes ("cell groups", merged as model.placement.build_groups
 # does), each tagged with its index in one byte. Past 128 groups the grid keeps the block's cells in a slower side
 # table; past 256 the index wraps and removing the block (grinding it off, or a split that moves it to a new grid)
-# crashes the game. The count here can differ from the game's by a few (the merge order isn't reproduced), so stay
-# under 128: cover a curved collider with a few occupancy* boxes instead.
+# crashes the game. The count depends on the merge order, which isn't reproduced, so it is taken as the most over
+# several orders (model.placement.cell_groups) and kept under 128: cover a curved collider with a few occupancy*
+# boxes instead.
 MAX_CELL_GROUPS = 128
 
 

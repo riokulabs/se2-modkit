@@ -21,6 +21,7 @@ Frames: everything here is in the collision glTF frame (Y up, -Z = Forward = the
 +0.125 m translation (vanilla Welder400 does the same), so cell i has its centre at 0.25 i - 0.125 in this frame and
 cell faces lie on multiples of 0.25 m. Blender -> glTF: (x, y, z) -> (x, z, -y).
 """
+import itertools
 import json
 import math
 import os
@@ -330,6 +331,14 @@ def build_groups(cells):
     return groups
 
 
+def cell_groups(cells):
+    """How many boxes the game can merge the occupied `cells` into: the most over the six axis orders of the seeds.
+    The game's own order isn't reproduced, and on an irregular shape the count can swing by half between orders."""
+    cells = list(cells)
+    return max((len(build_groups(sorted(cells, key=lambda c, p=p: (c[p[0]], c[p[1]], c[p[2]]))))
+                for p in itertools.permutations(range(3))), default=0)
+
+
 def _layer(lo, hi, axis, at):
     """The cells of the box (lo, hi) widened to `at` on `axis`: the slab one cell thick at that index."""
     a, b = (axis + 1) % 3, (axis + 2) % 3
@@ -382,8 +391,7 @@ def analyse(render_tris, regular, occupancy_hints=(), mount_hints=(), fracture_h
            "occupied_in_box": len(occ & box_cells), "occupied_outside_box": len(occ - box_cells),
            "empty_in_box": len(box_cells - occ), "faces": {},
            "free_cells": sorted(box_cells - occ), "shift": [float(v) for v in np.broadcast_to(shift, 3)]}
-    occ_groups = build_groups(sorted(occ, key=lambda c: (c[2], c[1], c[0])))
-    res["occupancy_groups"] = len(occ_groups)
+    res["occupancy_groups"] = cell_groups(occ)
     for d, cells in surf.items():
         ax = [i for i in range(3) if DIRS[d][i]][0]
         sgn = DIRS[d][ax]

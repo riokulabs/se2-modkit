@@ -75,3 +75,11 @@ def test_cell_groups_of_a_box_and_a_staircase():
     n = 6
     stairs = [(x, y, z) for x in range(3) for y in range(n) for z in range(n) if z <= y]
     assert len(PL.build_groups(sorted(stairs, key=lambda c: (c[2], c[1], c[0])))) == n
+
+
+def test_cell_groups_takes_the_worst_merge_order():
+    # the game's merge order isn't reproduced, and it changes the count: this shape gives 4 to 6 boxes by axis order
+    cells = [(0, 0, 1), (0, 1, 0), (0, 1, 1), (0, 2, 0), (0, 2, 1), (1, 0, 0), (1, 0, 1), (1, 1, 0), (1, 2, 1)]
+    assert len(PL.build_groups(sorted(cells, key=lambda c: (c[2], c[1], c[0])))) < 6
+    assert PL.cell_groups(cells) == 6
+    assert PL.cell_groups([]) == 0
