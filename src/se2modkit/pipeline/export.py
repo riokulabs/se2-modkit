@@ -632,6 +632,12 @@ def keep_zone(ob, zi, role):
     drop = [f for f in bm.faces if f[lay] != zi + 1 or f[rl] != ri]
     if drop:
         bmesh.ops.delete(bm, geom=drop, context="FACES")
+    loose = [e for e in bm.edges if not e.link_faces]                  # the source's own loose edges and verts would
+    if loose:                                                          # ride along in every zone's copy (and stretch
+        bmesh.ops.delete(bm, geom=loose, context="EDGES")              # its bounds across the block)
+    loose = [v for v in bm.verts if not v.link_faces]
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context="VERTS")
     left = len(bm.faces)
     bm.to_mesh(me)
     bm.free()
