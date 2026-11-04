@@ -102,3 +102,32 @@ def test_render_hidden_helpers_stay_out_of_bounds_and_counts(tmp_path):
                                          views=["front"], set_name="hull"))
     assert report["tris"] == 12
     assert max(report["half_extents"]) == pytest.approx(0.5, abs=1e-3)
+
+
+def test_cutters_and_render_hidden_collections_stay_out(tmp_path):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    top = bpy.data.collections.new("DRIVE")
+    bpy.context.scene.collection.children.link(top)
+    hidden = bpy.data.collections.new("PLAN")
+    top.children.link(hidden)
+    hidden.hide_render = True
+
+    def cube(name, loc, coll):
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=loc)
+        ob = bpy.context.active_object
+        ob.name = name
+        ob.data.materials.append(bpy.data.materials.new("PaintedMetalColorable"))
+        for c in list(ob.users_collection):
+            c.objects.unlink(ob)
+        coll.objects.link(ob)
+    cube("body", (0, 0, 0), top)
+    cube("cutter_port", (30, 0, 0), top)          # a visible boolean cutter, by name
+    cube("plan_copy", (0, 30, 0), hidden)          # inside a render-hidden collection
+    src = tmp_path / "coll.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(src), copy=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    out = tmp_path / "look" / "XX_Coll" / "r1"
+    report = look_run.run(look.build_job(source=src, block="XX_Coll", out_dir=out, stage="look", rnd=1,
+                                         views=["front"], set_name="hull", collection="DRIVE"))
+    assert report["tris"] == 12
+    assert max(report["half_extents"]) == pytest.approx(0.5, abs=1e-3)

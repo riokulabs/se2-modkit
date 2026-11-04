@@ -60,6 +60,22 @@ def _load(job: dict) -> bpy.types.Collection:
     return holder
 
 
+def _render_meshes(coll) -> list:
+    """The meshes a render of the collection shows, the same set a mod build exports: collections and objects hidden
+    from render, and boolean cutters (`cutter*`), stay out of the bounds, the counts and the checks."""
+    out = []
+
+    def visit(c):
+        if c.hide_render:
+            return
+        out.extend(o for o in c.objects
+                   if o.type == "MESH" and not o.hide_render and not o.name.startswith("cutter"))
+        for child in c.children:
+            visit(child)
+    visit(coll)
+    return list(dict.fromkeys(out))
+
+
 def _materials(objs, table: dict) -> list[str]:
     unmapped = []
     for o in objs:
@@ -115,8 +131,7 @@ def run(job: dict) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     base.configure(out, fast=job["fast"])
     holder = _load(job)
-    # what renders: helpers hidden from render (boolean cutters, planning copies) stay out of bounds, counts and checks
-    objs = [o for o in holder.all_objects if o.type == "MESH" and not o.hide_render]
+    objs = _render_meshes(holder)
     if not objs:
         raise SystemExit(f"ERROR: nothing to render in {Path(job['source']).name}")
     unmapped = _materials(objs, job["materials"])

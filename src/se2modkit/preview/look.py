@@ -140,9 +140,12 @@ def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = Fals
                  for m in report.get("unmapped_materials", [])]
     geo = out / "geocheck.json"
     if geo.is_file():
-        g = json.loads(geo.read_text(encoding="utf-8"))
-        report["geocheck"] = {"ok": g.get("ok", True), "failures": len(g.get("failures", [])),
-                              "warnings": len(g.get("warnings", []))}
+        try:
+            g = json.loads(geo.read_text(encoding="utf-8"))
+            report["geocheck"] = {"ok": g.get("ok", True), "failures": len(g.get("failures", [])),
+                                  "warnings": len(g.get("warnings", []))}
+        except (ValueError, AttributeError):   # check_set has already listed it as unreadable
+            report["geocheck"] = {"ok": False, "unreadable": True}
     report["exposure"] = {p.stem: shots.exposure(p).__dict__ for p in sorted(out.glob(f"{block}_{stage}_r{rnd}_*.png"))}
     report["problems"] = problems
     pngs = sorted(p for p in out.glob(f"{block}_{stage}_r{rnd}_*.png"))
