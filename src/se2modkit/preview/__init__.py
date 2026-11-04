@@ -5,7 +5,10 @@ Renders go into the mod's git-ignored preview folder (`base.output_dir`), never 
   compose     contact sheets and before/after pairs of any images (`se2mod sheet` / `se2mod pair`; Pillow, lazily)
   sheets      the preview sets' own sheets: a set's contact sheet, the states sheet, the icon sheet (Pillow, lazily)
   texcache    the private texture cache the preview materials convert game textures into (no Blender)
+  shots       the shot standard: view names, file names, camera fit, exposure, set checks (`se2mod shots check`)
   plan        `previews.toml`: the declarative shot list `se2mod preview` renders (no Blender)
+  lookdev     the look-dev scene: a block on an armor hull beside vanilla neighbors and a scale figure, seen from
+              in-game eye views with the game's field of view (viewpoints in plain Python; the sets need Blender)
   base        Blender: the shot scene (EEVEE, AgX, the neutral four-light rig, floor grid), painted copies of built
               blocks, read-only vanilla FBX, the scale figure, the output folder
   mats        Blender: material stand-ins by Keen slot name and by material GUID (paints, atlases, construction,

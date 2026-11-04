@@ -270,6 +270,7 @@ def fracture_mat(name):
 
 
 SIMPLE = {
+    "Unmapped": ((1.0, 0.0, 1.0), 0.5, 0.0, 0.0),   # loud on purpose: a working-file material with no Keen slot
     "Section": ((0.70, 0.08, 0.06), 0.6, 0.0, 0.0),
     "Darker": ((0.028, 0.03, 0.033), 0.6, 0.3, 0.05), "Grey": ((0.12, 0.125, 0.13), 0.55, 0.4, 0.05),
     "Yellow": ((0.80, 0.50, 0.03), 0.45, 0.2, 0.04), "Brushed": ((0.50, 0.51, 0.52), 0.35, 1.0, 0.05),
@@ -289,8 +290,12 @@ GHOSTS = {"GhostSlot": ((0.15, 0.85, 1.0), 0.35), "GhostReg": ((1.0, 0.35, 0.1),
 
 def get(key):
     """Stand-in material for a key: 'PMC:<paint>', a SIMPLE / EMIS / GHOSTS name, or '<Atlas...>:<paint>'."""
-    if key in _CACHE and _CACHE[key].name in bpy.data.materials:
-        return _CACHE[key]
+    if key in _CACHE:
+        try:   # a reloaded or reset session frees the cached material
+            if _CACHE[key].name in bpy.data.materials:
+                return _CACHE[key]
+        except ReferenceError:
+            pass
     base, _, var = key.partition(":")
     paint = var or "keen"
     if base == "PMC":
@@ -524,6 +529,16 @@ KEEN_MAP = {"PaintedMetalDarker": "Darker", "PaintedMetalGrey": "Grey", "Painted
 KEEN_MAP.update({"BraidedSteel": "MetalDull", "CarbonFiber": "Plastic2", "Emissive01": "EmOff", "Emissive02": "EmOff",
                  "WindowGlassBroken": "b9db8238-9373-4690-b743-17e37759179e"})
 KEEN_MAP.update({"LCDScreen_Off_4": "EmOff", "LCDScreen_Off_4_Back": "EmOff"})   # 4:1 LCD panels
+
+
+def is_keen_slot(slot_name) -> bool:
+    """True when `keen_key` knows this material name (a Keen slot or a stand-in), so it never falls back."""
+    n = slot_name.split(".")[0]
+    for suf in ("_Subpart", "_SubPart"):
+        if n.endswith(suf) and n != suf:
+            n = n[:-len(suf)]
+    return (n.startswith(("pv_", "PaintedMetalColorable", "Atlas")) or n.endswith("_LastLOD") or n in KEEN_MAP
+            or n in ("ConveyorsAtlas", "GratingMetallic"))
 
 
 def keen_key(slot_name, paint="keen"):

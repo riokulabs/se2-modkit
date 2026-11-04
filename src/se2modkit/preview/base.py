@@ -133,7 +133,11 @@ def vanilla(rel: str, paint: str = "keen"):
     swapped for the stand-ins. Returns (collection, bounds lo, bounds hi)."""
     key = (rel, paint)
     if key in _VAN:
-        return _VAN[key]
+        try:   # a reloaded or reset session frees the cached collection
+            if _VAN[key][0].name in bpy.data.collections:
+                return _VAN[key]
+        except ReferenceError:
+            pass
     path = vanilla_ref() / "Blocks" / rel
     if not path.is_file():
         raise PreviewError(f"No vanilla model {path}: check the vanilla_ref folder.")

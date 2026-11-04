@@ -29,18 +29,21 @@ import re
 import tomllib
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
-__all__ = ["CAMERAS", "PLAN_NAMES", "STATES", "PlanError", "PreviewSet", "Shot", "contained", "find_plan", "job", "load_plan",
-           "parse_plan", "select"]
+from . import shots
+
+__all__ = ["CAMERAS", "PLAN_NAMES", "STATES", "LookdevConfig", "PlanError", "PreviewSet", "Shot", "contained", "find_plan", "job", "load_plan",
+           "parse_lookdev", "parse_plan", "select"]
 
 PLAN_NAMES = ("previews.toml",)
-CAMERAS = {   # preset -> (direction from the block to the camera, orthographic)
-    "front": ((0, 1, 0), True), "back": ((0, -1, 0), True), "left": ((-1, 0, 0), True), "right": ((1, 0, 0), True),
-    "top": ((0, 0.0001, 1), True), "bottom": ((0, 0.0001, -1), True),
-    "3q_front": ((-0.6, 0.8, 0.45), False), "3q_rear": ((0.6, -0.8, 0.45), False),
-    "3q_front_low": ((-0.6, 0.8, 0.12), False), "3q_front_high": ((-0.5, 0.6, 0.9), False),
-}
+# preset -> (direction from the block to the camera, orthographic): the shot standard's views, plus the names older
+# plans used (kept so existing previews.toml files still load; they are read as their canonical view).
+CAMERAS = {name: (v.direction, not v.eye) for name, v in shots.VIEWS.items()}
+CAMERAS.update({old: CAMERAS[new] for old, new in shots.ALIASES.items()})
+# Old presets with no canonical twin keep their own angle, so existing plans render exactly as before.
+LEGACY_CAMERAS = {"3q_front_high": ((-0.5, 0.6, 0.9), False)}
+CAMERAS.update(LEGACY_CAMERAS)
 STATES = {   # name -> (pipeline.states shot it draws, the kind of extra parameters it takes)
     "intact": ("done", None), "construction": (None, "stage"), "done_damaged": ("done_damaged", "zones"),
     "one_hit": ("one_hit", "zones"), "battered": ("battered", "zones"), "broken": ("broken", "zones"),
@@ -155,7 +158,8 @@ def _shot(raw: Mapping, defaults: Mapping, set_blocks: tuple[str, ...], where: s
     cam = v.get("camera", "3q_front")
     if isinstance(cam, str):
         if cam not in CAMERAS:
-            raise PlanError(f"{where}: unknown camera {cam!r} (presets: {', '.join(CAMERAS)}).")
+            raise PlanError(f"{where}: unknown camera {cam!r} (presets: {', '.join(shots.VIEWS)}).")
+        cam = cam if cam in LEGACY_CAMERAS else shots.canonical(cam)
     elif isinstance(cam, Mapping):
         extra = sorted(set(cam) - {"position", "target", "lens", "ortho"})
         if extra or "position" not in cam:
@@ -203,10 +207,44 @@ def _shot(raw: Mapping, defaults: Mapping, set_blocks: tuple[str, ...], where: s
                 fill=_num(v.get("fill", 0.8), f"{where} fill", 0.05, 1.0), together=together)
 
 
+@dataclass(frozen=True)
+class LookdevConfig:
+    """The mod's `[lookdev]` table: vanilla neighbors placed beside the block in the look-dev scene (FBX paths under
+    the vanilla reference's Blocks/), and a map from the working file's material names to Keen slot names for names
+    that aren't Keen slots already."""
+    neighbors: tuple[str, ...] = ()
+    materials: dict[str, str] = field(default_factory=dict)
+
+
+def parse_lookdev(data: Mapping, where: str = "previews.toml") -> LookdevConfig:
+    raw = data.get("lookdev", {})
+    if not isinstance(raw, Mapping):
+        raise PlanError(f"{where}: [lookdev] must be a table.")
+    extra = sorted(set(raw) - {"neighbors", "materials"})
+    if extra:
+        raise PlanError(f"{where}: [lookdev] takes only neighbors and materials (not {', '.join(extra)}).")
+    neighbors = raw.get("neighbors", [])
+    if not isinstance(neighbors, list) or not all(isinstance(n, str) and n for n in neighbors):
+        raise PlanError(f"{where}: [lookdev] neighbors is a list of FBX paths under the vanilla Blocks/ folder.")
+    for n in neighbors:
+        # Checked as both a POSIX and a Windows path, so a drive letter, a UNC path or a backslashed '..' can't
+        # leave the vanilla Blocks/ folder on any OS.
+        win, posix = PureWindowsPath(n), PurePosixPath(n)
+        if (win.is_absolute() or win.drive or win.root or posix.is_absolute() or ".." in win.parts
+                or ".." in posix.parts or not n.lower().endswith(".fbx")):
+            raise PlanError(f"{where}: [lookdev] neighbor {n!r} must be a relative .fbx path with no drive and no "
+                            "'..'.")
+    mats = raw.get("materials", {})
+    if not isinstance(mats, Mapping) or not all(isinstance(k, str) and isinstance(v, str) for k, v in mats.items()):
+        raise PlanError(f"{where}: [lookdev.materials] maps a material name to a Keen slot name.")
+    return LookdevConfig(tuple(neighbors), dict(mats))
+
+
 def parse_plan(data: Mapping, where: str = "previews.toml") -> dict[str, PreviewSet]:
-    unknown = sorted(set(data) - {"defaults", "sets"})
+    unknown = sorted(set(data) - {"defaults", "sets", "lookdev"})
     if unknown:
-        raise PlanError(f"{where}: unknown top-level key(s) {', '.join(unknown)} (use [defaults] and [sets.<name>]).")
+        raise PlanError(f"{where}: unknown top-level key(s) {', '.join(unknown)} (use [defaults], [sets.<name>] and "
+                        "[lookdev]).")
     defaults = data.get("defaults", {})
     if not isinstance(defaults, Mapping) or set(defaults) - _DEFAULT_KEYS:
         raise PlanError(f"{where}: [defaults] may set only {', '.join(sorted(_DEFAULT_KEYS))}.")
