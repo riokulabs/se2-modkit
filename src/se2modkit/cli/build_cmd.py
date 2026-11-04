@@ -1,4 +1,4 @@
-"""`se2mod build MOD [--dry-run] [-v]`: compile a mod's Assets into Content with the Mod SDK builder."""
+"""`se2mod build MOD [--dry-run] [-v] [--lock-timeout S]`: compile a mod's Assets into Content with the Mod SDK builder."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ def _add_args(p) -> None:
     p.add_argument("-v", "--verbose", action="store_true", help="verbose builder output")
     p.add_argument("--assume-game-closed", action="store_true",
                    help="build even when the process list is unavailable (you vouch that the game is closed)")
+    p.add_argument("--lock-timeout", type=float, default=sdkbuild.SDK_LOCK_TIMEOUT, metavar="SECONDS",
+                   help="how long to wait for another session's SDK build (default: %(default)g)")
 
 
 @register("build", "Compile Assets/*.def|*.partialdef to Content/ with the Mod SDK builder (headless)",
@@ -31,4 +33,4 @@ def cmd_build(args, env) -> int:
         except (EnvError, OSError) as e:
             print(f"warning: no SDK standin ({e})", file=sys.stderr)
     return sdkbuild.build(env, mod, dry_run=args.dry_run, verbose=args.verbose,
-                          assume_game_closed=args.assume_game_closed)
+                          assume_game_closed=args.assume_game_closed, lock_timeout=args.lock_timeout)

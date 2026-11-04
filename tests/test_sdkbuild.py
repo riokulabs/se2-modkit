@@ -419,3 +419,64 @@ def test_clean_project_does_not_warn(tmp_path, capsys):
     with sdkbuild.patched_project(d / "Jörg Mod.vrgproj", env):
         pass
     assert "already holds" not in capsys.readouterr().err
+
+
+# --- the SDK build lock -------------------------------------------------------------------------------------------
+
+
+def test_sdk_lock_path_is_in_the_cache(tmp_path):
+    env = _env(tmp_path)
+    assert sdkbuild.sdk_lock_path(env) == env.cache_dir / "sdk-build.lock"
+
+
+def test_build_waits_for_the_sdk_lock(tmp_path, capsys):
+    from se2modkit.jobqueue import FileLock
+    env, d = _buildable(tmp_path)
+    held = FileLock(sdkbuild.sdk_lock_path(env))
+    assert held.acquire(blocking=False)
+    run = FakeRun()
+    try:
+        assert sdkbuild.build(env, d, run=run, lock_timeout=0.2) == sdkbuild.EXIT_LOCKED
+    finally:
+        held.release()
+    assert run.calls == []
+    assert "another SDK build" in capsys.readouterr().err
+
+
+def test_build_takes_and_releases_the_lock(tmp_path):
+    from se2modkit.jobqueue import FileLock
+    env, d = _buildable(tmp_path)
+    seen = {}
+
+    def check_held(i, argv):
+        probe = FileLock(sdkbuild.sdk_lock_path(env))
+        seen.setdefault("held", not probe.acquire(blocking=False))
+        return 0
+
+    sdkbuild.build(env, d, run=FakeRun(check_held))
+    assert seen["held"] is True
+    after = FileLock(sdkbuild.sdk_lock_path(env))
+    assert after.acquire(blocking=False)
+    after.release()
+
+
+def test_build_rechecks_the_game_after_waiting_for_the_lock(tmp_path, monkeypatch, capsys):
+    import threading
+    from se2modkit.jobqueue import FileLock
+    env, d = _buildable(tmp_path)
+    state = {"running": False}
+    monkeypatch.setattr(procs, "game_running", lambda **_: state["running"])
+    held = FileLock(sdkbuild.sdk_lock_path(env))
+    assert held.acquire(blocking=False)
+
+    def game_starts_then_build_finishes():
+        state["running"] = True     # the player starts the game while our build waits
+        held.release()
+
+    threading.Timer(0.3, game_starts_then_build_finishes).start()
+    run = FakeRun()
+    assert sdkbuild.build(env, d, run=run, lock_timeout=5) == sdkbuild.EXIT_GAME_RUNNING
+    assert run.calls == []
+    after = FileLock(sdkbuild.sdk_lock_path(env))
+    assert after.acquire(blocking=False)   # the lock is not left held
+    after.release()
