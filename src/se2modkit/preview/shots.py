@@ -162,10 +162,13 @@ def _cam_path(png: Path) -> Path:
     return png.with_name(png.stem + ".cam.json")
 
 
-def save_camera(png: Path, matrix, lens: float) -> Path:
-    """Write the camera a render used (4x4 world matrix rows, lens in mm) beside it."""
+def save_camera(png: Path, matrix, lens: float, ortho: float | None = None) -> Path:
+    """Write the camera a render used (4x4 world matrix rows, lens in mm, ortho scale for an orthographic view)."""
     path = _cam_path(Path(png))
-    path.write_text(json.dumps({"matrix": [[float(x) for x in row] for row in matrix], "lens": float(lens)}))
+    cam = {"matrix": [[float(x) for x in row] for row in matrix], "lens": float(lens)}
+    if ortho:
+        cam["ortho"] = float(ortho)
+    path.write_text(json.dumps(cam))
     return path
 
 
@@ -175,7 +178,7 @@ def load_camera(png: Path) -> dict | None:
 
 
 def _same_camera(a: dict, b: dict) -> bool:
-    return (abs(a["lens"] - b["lens"]) < 1e-6
+    return (abs(a["lens"] - b["lens"]) < 1e-6 and abs(a.get("ortho", 0.0) - b.get("ortho", 0.0)) < 1e-6
             and all(abs(x - y) < 1e-6 for ra, rb in zip(a["matrix"], b["matrix"]) for x, y in zip(ra, rb)))
 
 

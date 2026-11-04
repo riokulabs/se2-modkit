@@ -187,7 +187,11 @@ def _plate(armor_dir: Path, paint: str):
     from . import mats as PM
     key = (str(armor_dir), paint)
     if key in _PLATE:
-        return _PLATE[key]
+        try:   # a reloaded or reset session frees the cached collection
+            if _PLATE[key][0].name in bpy.data.collections:
+                return _PLATE[key]
+        except ReferenceError:
+            pass
     before = set(bpy.data.objects)
     bpy.ops.import_scene.fbx(filepath=str(Path(armor_dir) / HULL_PLATE))
     new = [o for o in bpy.data.objects if o not in before]

@@ -167,3 +167,13 @@ def test_shots_check_rejects_unknown_stage(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as e:
         cli.main(["shots", "check", str(tmp_path), "--block", "A", "--stage", "looks", "--round", "1"])
     assert e.value.code == 2
+
+
+def test_saved_camera_keeps_the_ortho_scale(tmp_path):
+    a = _png(tmp_path / "A_fix_r1_front_before.png", 120)
+    b = _png(tmp_path / "A_fix_r1_front_after.png", 120)
+    m = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 5], [0, 0, 0, 1]]
+    shots.save_camera(a, m, 50.0, ortho=6.0)
+    shots.save_camera(b, m, 50.0, ortho=7.0)
+    assert shots.load_camera(a)["ortho"] == 6.0
+    assert shots.check_set(tmp_path, "A", "fix", 1) == ["before/after cameras differ: A_fix_r1_front"]
