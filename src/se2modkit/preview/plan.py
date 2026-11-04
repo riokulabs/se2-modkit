@@ -29,7 +29,7 @@ import re
 import tomllib
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from . import shots
 
@@ -227,8 +227,13 @@ def parse_lookdev(data: Mapping, where: str = "previews.toml") -> LookdevConfig:
     if not isinstance(neighbors, list) or not all(isinstance(n, str) and n for n in neighbors):
         raise PlanError(f"{where}: [lookdev] neighbors is a list of FBX paths under the vanilla Blocks/ folder.")
     for n in neighbors:
-        if n.startswith(("/", "\\")) or ".." in Path(n).parts or not n.lower().endswith(".fbx"):
-            raise PlanError(f"{where}: [lookdev] neighbor {n!r} must be a relative .fbx path with no '..'.")
+        # Checked as both a POSIX and a Windows path, so a drive letter, a UNC path or a backslashed '..' can't
+        # leave the vanilla Blocks/ folder on any OS.
+        win, posix = PureWindowsPath(n), PurePosixPath(n)
+        if (win.is_absolute() or win.drive or win.root or posix.is_absolute() or ".." in win.parts
+                or ".." in posix.parts or not n.lower().endswith(".fbx")):
+            raise PlanError(f"{where}: [lookdev] neighbor {n!r} must be a relative .fbx path with no drive and no "
+                            "'..'.")
     mats = raw.get("materials", {})
     if not isinstance(mats, Mapping) or not all(isinstance(k, str) and isinstance(v, str) for k, v in mats.items()):
         raise PlanError(f"{where}: [lookdev.materials] maps a material name to a Keen slot name.")

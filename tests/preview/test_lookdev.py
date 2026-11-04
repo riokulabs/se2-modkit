@@ -109,3 +109,10 @@ def test_mount_face_turns_that_face_down():
     assert LD.rotated_half(XL, "+Y") == pytest.approx((8.75, 8.75, 11.25))
     with pytest.raises(shots.PreviewError):
         LD.mount_rotation("up")
+
+
+@pytest.mark.parametrize("bad", ["C:/Windows/x.fbx", "C:foo.fbx", "Blocks\\..\\..\\x.fbx", "/abs/x.fbx",
+                                 "\\\\server\\share\\x.fbx", "a/../b.fbx", "x.FBX.txt"])
+def test_neighbor_paths_cannot_leave_the_vanilla_folder(bad):
+    with pytest.raises(plan.PlanError):
+        plan.parse_lookdev({"lookdev": {"neighbors": [bad]}})

@@ -35,7 +35,7 @@ __all__ = ["CROUCH_HEIGHT_M", "DEFAULT_SET", "EYE_FILL", "EYE_HEIGHT_M", "GAME_F
            "LookScene", "SetSpec", "anchor_offset", "build_set", "figure_spot", "game_lens", "hull_cells",
            "mount_rotation", "neighbor_slots", "rotated_half", "set_spec", "viewpoint"]
 
-GAME_FOV_V = 1.22          # rad, vertical: the game's default field of view (RenderOptions DefaultFieldOfView)
+GAME_FOV_V = 1.22          # rad, vertical: the game's default field of view
 EYE_HEIGHT_M = 1.65        # standing eye above the floor; the game camera follows the head bone, so this is measured
 CROUCH_HEIGHT_M = 1.0      # crouched eye, for the low and mount views
 EYE_FILL = 0.75            # share of the frame a block fills in an eye view (the game's lens is wide)
@@ -89,7 +89,8 @@ def viewpoint(view: str, half, *, center=(0.0, 0.0, 0.0), floor_z: float = 0.0, 
     v = shots.VIEWS[shots.canonical(view)]
     c = tuple(float(x) for x in center)
     if not v.eye:
-        # Blender's ortho scale spans the frame's width, so the screen-vertical extent is scaled by the aspect.
+        # Blender's ortho scale spans the frame's wider side; renders here are landscape, so it is the width and
+        # the screen-vertical extent is scaled by the aspect.
         vert = 1 if abs(v.direction[2]) > 0.5 else 2
         horiz = [i for i in range(3) if abs(v.direction[i]) < 0.5 and i != vert][0]
         width = max(2 * abs(half[horiz]), 2 * abs(half[vert]) * aspect)
@@ -100,7 +101,8 @@ def viewpoint(view: str, half, *, center=(0.0, 0.0, 0.0), floor_z: float = 0.0, 
     eye_fill = EYE_FILL if eye_fill is None else eye_fill
     hx, hy = _horiz(v.direction)
     side = abs(half[0] * hx) + abs(half[1] * hy)
-    # A block taller than a standing player is seen the way players see big blocks: hovering at its mid-height.
+    # A block more than twice a player's eye height is seen the way players see big blocks: hovering at its
+    # mid-height.
     tall = half[2] > EYE_HEIGHT_M
     if view in _LOW:
         height = EYE_HEIGHT_M if tall else CROUCH_HEIGHT_M
@@ -206,10 +208,9 @@ def _plate(armor_dir: Path, paint: str):
     thin = min(range(3), key=lambda i: size[i])
     turn = {0: Matrix.Rotation(math.radians(90), 4, "Y"), 1: Matrix.Rotation(math.radians(-90), 4, "X"),
             2: Matrix.Identity(4)}[thin]
-    top = max((turn @ p)[2] for p in pts)
-    mid = (lo + hi) / 2
-    fix = Matrix.Translation((0, 0, -top)) @ turn @ Matrix.Translation((-mid.x, -mid.y, -mid.z) if thin == 2
-                                                                        else (0, 0, 0))
+    centered = turn @ Matrix.Translation(-(lo + hi) / 2)          # centered in plane, thin axis along Z
+    top = max((centered @ p)[2] for p in pts)
+    fix = Matrix.Translation((0, 0, -top)) @ centered               # then the top face down to z = 0
     for o in new:
         if o.parent is None:
             o.matrix_world = fix @ o.matrix_world
