@@ -69,6 +69,9 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     s.add_argument("--cwd", type=Path, default=None, metavar="DIR", help="working directory (default: here)")
     s.add_argument("--timeout", type=_seconds, default=None, metavar="SECONDS",
                    help="stop the job after this long (SIGTERM, then SIGKILL 10 s later)")
+    s.add_argument("--priority", action="store_true",
+                   help="the priority lane: start before plain waiting jobs (a quick preview someone is waiting on); "
+                        "it still never starts beside a running heavy job")
     s.add_argument("--env", type=_kv, action="append", default=[], metavar="K=V",
                    help="extra environment variable for the job (repeatable)")
     s.add_argument("script_args", nargs="*", metavar="CMD", help="the command and its arguments, after --")
@@ -141,7 +144,7 @@ def _dispatch(args, env, store: Q.Store) -> int:
             argv = argv[1:]
         _settings(env)   # a broken [queue] table is reported now, not later in the runner log
         job = store.submit(argv, name=args.name, load=args.load, gpu=args.gpu, cwd=args.cwd, timeout=args.timeout,
-                           env=dict(args.env))
+                           env=dict(args.env), priority=args.priority)
         print(job.id)
         Q.ensure_runner(store)
         return 0

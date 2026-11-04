@@ -60,6 +60,7 @@ def test_qt_window_lists_jobs_and_moves_them(tmp_path, monkeypatch):
     import pytest
 
     pytest.importorskip("PySide6")
+    monkeypatch.setattr(Q, "spawn_runner", lambda root: None)                  # never start a real runner here
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     from PySide6 import QtWidgets
 

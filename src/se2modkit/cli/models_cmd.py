@@ -54,10 +54,40 @@ def _build_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--export", action="store_true",
                    help="also export the game models: one windowed Blender (Keen's VRAGE Tools), serial")
     p.add_argument("--render", action="store_true", help="render the mod's previews too (serial)")
+    p.add_argument("--per-block", action="store_true",
+                   help="queue one heavy job per named block (export:<mod>:<block>) instead of building them here, so a "
+                        "long batch never holds the GPU in one piece; needs plain block names")
     p.add_argument("--release", action="store_true",
                    help="the clean build a publish needs: refuses uncommitted changes, rebuilds and exports every "
                         "block whatever the saved build state says, and stamps the result for `se2mod publish`")
     _common_args(p)
+
+
+_RUN_CLI = "import sys; from se2modkit.cli import main; sys.exit(main(sys.argv[1:]))"
+
+
+def _per_block(args, env, release: bool) -> int:
+    """Queue `build-models MOD BLOCK` once per block, each its own heavy job: the queue can then put a preview between
+    two blocks instead of behind the whole batch."""
+    from .. import jobqueue as Q
+    bad = [b for b in args.blocks if any(c in b for c in "*?[") or b in ("all", "default")]
+    if release or not args.blocks or bad:
+        print("error: --per-block needs plain block names (no PREFIX*, all or --release), one job per block.",
+              file=sys.stderr)
+        return 2
+    cfg = _mod(env, args.mod)
+    passthrough = [f for f, on in (("--export", args.export), ("--render", args.render), ("--force", args.force),
+                                   ("--assume-game-closed", args.assume_game_closed)) if on]
+    if args.script:
+        passthrough += ["--script", str(Path(args.script).resolve())]
+    passthrough += ["--timeout", f"{args.timeout:g}", "-j", "1"]
+    store = Q.Store(env.cache_dir / "queue")
+    for block in args.blocks:
+        job = store.submit([sys.executable, "-c", _RUN_CLI, "build-models", args.mod, block, *passthrough],
+                           name=f"export:{cfg.name}:{block}", load=Q.HEAVY, timeout=args.timeout + 120)
+        print(f"{job.id}\texport:{cfg.name}:{block}")
+    Q.ensure_runner(store)
+    return 0
 
 
 @register("build-models", "Build a mod's stale block models in Blender (incremental; headless blocks in parallel)",
@@ -68,6 +98,8 @@ def cmd_build_models(args, env) -> int:
         print("error: --jobs needs at least 1.", file=sys.stderr)
         return 2
     release = getattr(args, "release", False)
+    if getattr(args, "per_block", False):
+        return _per_block(args, env, release)
     if release and args.blocks:
         print("error: --release builds every block of the mod; drop the block names.", file=sys.stderr)
         return 2

@@ -138,6 +138,7 @@ class JobRecord:
     cancel: bool = False                 # cancel requested
     stopping: str = ""                   # "cancel" or "timeout" once the runner signalled the job
     rank: float | None = None            # place in the queue once a job was moved (else its id)
+    priority: bool = False               # the priority lane: starts before plain jobs (never beside a running heavy)
     kind: str = ""                       # "blender": a live, windowed Blender session (see blender_session_argv)
 
     @property
@@ -167,9 +168,10 @@ def blender_session_argv(blender: Path | str, blend_file: Path | str | None = No
     return argv + ["--python", str(Path(__file__).with_name("blender_live.py"))]
 
 
-def queue_key(job: JobRecord) -> tuple[float, int]:
-    """Sort key of waiting jobs: their rank once the queue was reordered, else their id (first come, first served)."""
-    return (job.rank if job.rank is not None else float(job.id), job.id)
+def queue_key(job: JobRecord) -> tuple[int, float, int]:
+    """Sort key of waiting jobs: the priority lane first (quick previews someone is waiting to see), then within each
+    lane their rank once the queue was reordered, else their id (first come, first served)."""
+    return (0 if job.priority else 1, job.rank if job.rank is not None else float(job.id), job.id)
 
 
 def exit_code(job: JobRecord) -> int:
@@ -308,24 +310,30 @@ class Store:
 
     def submit(self, argv: list[str], *, name: str = "", load: float = HEAVY, gpu: str | int = "auto",
                cwd: Path | str | None = None, timeout: float | None = None, env: Mapping[str, str] | None = None,
-               environ: Mapping[str, str] = os.environ, kind: str = "") -> JobRecord:
-        """Add a job; returns it with its new id. `environ` is the submitter's environment (see CAPTURED_ENV)."""
+               environ: Mapping[str, str] = os.environ, kind: str = "", priority: bool = False) -> JobRecord:
+        """Add a job; returns it with its new id. `environ` is the submitter's environment (see CAPTURED_ENV);
+        `priority` puts it in the priority lane."""
+        with self.lock():
+            return self._new_job(argv, name=name, load=load, gpu=gpu, cwd=cwd, timeout=timeout, env=env,
+                                 environ=environ, kind=kind, priority=priority)
+
+    def _new_job(self, argv, *, name, load, gpu, cwd, timeout, env, environ, kind, priority, rank=None) -> JobRecord:
+        """Create and save a job; the caller holds the queue lock."""
         if not argv:
             raise QueueError("Nothing to run: put the command after --.")
         job_env = {k: environ[k] for k in CAPTURED_ENV if environ.get(k)}
         job_env.update(env or {})
-        with self.lock():
-            counter = self.root / "next-id"
-            try:
-                job_id = int(counter.read_text(encoding="utf-8").strip() or 1)
-            except (OSError, ValueError):
-                job_id = 1
-            job_id = max([job_id, *(j.id + 1 for j in self.all())])
-            counter.write_text(f"{job_id + 1}\n", encoding="utf-8", newline="\n")
-            job = JobRecord(id=job_id, argv=list(argv), name=name or Path(argv[0]).name, load=load, gpu_req=gpu,
-                            cwd=str(Path(cwd if cwd is not None else os.getcwd()).resolve()), timeout=timeout,
-                            env=job_env, submitted=time.time(), kind=kind)
-            self.save(job)
+        counter = self.root / "next-id"
+        try:
+            job_id = int(counter.read_text(encoding="utf-8").strip() or 1)
+        except (OSError, ValueError):
+            job_id = 1
+        job_id = max([job_id, *(j.id + 1 for j in self.all())])
+        counter.write_text(f"{job_id + 1}\n", encoding="utf-8", newline="\n")
+        job = JobRecord(id=job_id, argv=list(argv), name=name or Path(argv[0]).name, load=load, gpu_req=gpu,
+                        cwd=str(Path(cwd if cwd is not None else os.getcwd()).resolve()), timeout=timeout,
+                        env=job_env, submitted=time.time(), kind=kind, priority=priority, rank=rank)
+        self.save(job)
         return job
 
     def cancel(self, job_ids: list[int] | None) -> list[JobRecord]:
@@ -350,14 +358,16 @@ class Store:
 
     def submit_blender(self, blender: Path | str, blend_file: Path | str | None = None, *, gpu: str | int = "auto",
                        environ: Mapping[str, str] = os.environ) -> JobRecord:
-        """Queue a live Blender session at the front of the queue (it still waits for running jobs to finish)."""
-        if (live := self.live_blender()) is not None:
-            raise QueueError(f"A live Blender is already {live.state} as job {live.id}; stop it first.")
+        """Queue a live Blender session at the very front (it still waits for running jobs to finish). The check for
+        another session and the submit happen under one lock, so two at once can't both get in. The session is told
+        where the queue lives (SE2_QUEUE_ROOT), so it can stop itself when idle while others wait."""
         name = "blender" + (f" {Path(blend_file).name}" if blend_file else "")
-        job = self.submit(blender_session_argv(blender, blend_file), name=name, load=HEAVY, gpu=gpu,
-                          environ=environ, kind="blender")
-        self.move(job.id, 0)
-        return self.load(job.id) or job
+        with self.lock():
+            if (live := self.live_blender()) is not None:
+                raise QueueError(f"A live Blender is already {live.state} as job {live.id}; stop it first.")
+            return self._new_job(blender_session_argv(blender, blend_file), name=name, load=HEAVY, gpu=gpu, cwd=None,
+                                 timeout=None, env={"SE2_QUEUE_ROOT": str(self.root)}, environ=environ,
+                                 kind="blender", priority=True, rank=-1.0)
 
     def queued(self) -> list[JobRecord]:
         """The waiting jobs, in the order they will start."""
