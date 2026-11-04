@@ -62,5 +62,5 @@ def parts_from_objects(objs, place=None) -> list[Part]:
             axis=tuple(R @ np.array(list(axis), float)) if axis is not None else None,
             point=tuple(np.array(list(point), float) @ R.T + t) if point is not None else None,
             links=tuple(s.strip() for s in (links.split(",") if isinstance(links, str) else links) if s.strip()),
-            uvs=uvs))
+            uvs=uvs, local=co))
     return parts

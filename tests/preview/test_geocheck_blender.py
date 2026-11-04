@@ -30,6 +30,7 @@ def test_parts_carry_tags_and_world_positions():
     assert abs(parts["pin_main"].axis[0]) == pytest.approx(1.0, abs=1e-4)
     assert parts["pin_main"].links == ("Base", "Other")
     assert parts["Base"].uvs is not None and parts["Base"].uvs.shape == (12, 3, 2)
+    assert parts["pin_main"].local[:, 2].max() == pytest.approx(0.5, abs=1e-4)   # its own frame: still upright
     report = GC.run(parts.values())
     assert any(f["check"] == "load_path" and f["parts"] == ["pin_main"] for f in report.failures) is False
 

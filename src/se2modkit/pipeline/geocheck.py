@@ -5,7 +5,8 @@ the part's `se2_role` / `se2_axis` / `se2_point` / `se2_links` properties or, fa
 (`pin_`, `lug_`, `mount_`, ...). `run` returns failures (the picture does not go out) and warnings:
 
   load_path     every part reaches a mount part through parts that touch it (within 2 mm); decals and skins exempt
-  pin_axis      a pin is square to its lug or clevis (within 1 degree) and on its eye (within 2 mm)
+  pin_axis      a pin is square to its lug or clevis (within 1 degree; untagged axes are read from the parts' shape)
+                and on its eye (within 2 mm, when the eye is tagged with se2_point)
   coplanar      two parts with faces in the same plane facing the same way (the game's depth test flickers there)
   poke_through  a part that passes clean through another part it is not linked to
   box_uv        a curved part whose UVs are a box projection (stretched, seamy texture on round surfaces)
@@ -48,10 +49,13 @@ class Part:
     point: tuple | None = None         # pins and lugs: a point on the pin axis (the eye's center)
     links: tuple = ()                  # names of parts this one is meant to sit in or pass through
     uvs: np.ndarray | None = None      # (M, 3, 2) per triangle corner, when known
+    local: np.ndarray | None = None    # (N, 3) the same vertices in the object's own frame (UVs are projected there)
 
     def __post_init__(self):
         self.verts = np.asarray(self.verts, float).reshape(-1, 3)
         self.tris = np.asarray(self.tris, int).reshape(-1, 3)
+        if self.local is not None:
+            self.local = np.asarray(self.local, float).reshape(-1, 3)
         if self.role is None:
             base = self.name.split(".")[0].lower()
             self.role = next((r for r in ROLES if base == r or base.startswith(r + "_")), None)
@@ -96,7 +100,8 @@ def _overlap(a, b, pad=0.0) -> bool:
 
 
 def _near(points: np.ndarray, P: np.ndarray, eps: float, chunk: int = 200_000) -> np.ndarray:
-    """For each point: is it within `eps` of a triangle's plane, inside that triangle (loosely)?"""
+    """For each point: is it within `eps` of a triangle's plane and over that triangle? (The in-plane slack is 1 % in
+    barycentric units, so it scales with the triangle.)"""
     out = np.zeros(len(points), bool)
     if not len(points) or not len(P):
         return out
@@ -120,7 +125,8 @@ def _near(points: np.ndarray, P: np.ndarray, eps: float, chunk: int = 200_000) -
 
 
 def _inside(points: np.ndarray, P: np.ndarray, chunk: int = 200_000) -> np.ndarray:
-    """Ray parity: which points lie inside the closed mesh P (a slightly skewed +X ray, Moller-Trumbore)."""
+    """Ray parity: which points lie inside the closed mesh P (a slightly skewed +X ray, Moller-Trumbore). Meaningless
+    for an open mesh (a single-sided panel), where only `_near` contact counts."""
     out = np.zeros(len(points), bool)
     if not len(points) or not len(P):
         return out
@@ -143,12 +149,34 @@ def _inside(points: np.ndarray, P: np.ndarray, chunk: int = 200_000) -> np.ndarr
     return out
 
 
+def _edge_samples(p: Part, lo, hi) -> np.ndarray:
+    """Start, middle and end of each of p's edges clipped to the box [lo, hi]: a part laid across a longer one, or
+    lapped through it, touches it along edges whose ends are outside the overlap."""
+    e = np.concatenate([p.tris[:, [0, 1]], p.tris[:, [1, 2]], p.tris[:, [2, 0]]])
+    e = np.unique(np.sort(e, axis=1), axis=0)
+    a, b = p.verts[e[:, 0]], p.verts[e[:, 1]]
+    d = b - a
+    t0, t1 = np.zeros(len(e)), np.ones(len(e))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for k in range(3):
+            par = np.abs(d[:, k]) < 1e-12
+            outside = par & ((a[:, k] < lo[k]) | (a[:, k] > hi[k]))
+            t0[outside], t1[outside] = 1.0, 0.0
+            ta, tb = (lo[k] - a[:, k]) / d[:, k], (hi[k] - a[:, k]) / d[:, k]
+            near_t, far_t = np.minimum(ta, tb), np.maximum(ta, tb)
+            t0 = np.where(par, t0, np.maximum(t0, near_t))
+            t1 = np.where(par, t1, np.minimum(t1, far_t))
+    keep = t0 <= t1
+    a, d, t0, t1 = a[keep], d[keep], t0[keep], t1[keep]
+    return np.concatenate([a + d * t0[:, None], a + d * ((t0 + t1) / 2)[:, None], a + d * t1[:, None]])
+
+
 def _touch(a: Part, b: Part) -> bool:
     if not _overlap(a, b, CONTACT):
         return False
     lo, hi = np.maximum(a.box()[0], b.box()[0]) - CONTACT, np.minimum(a.box()[1], b.box()[1]) + CONTACT
     for p, q in ((a, b), (b, a)):
-        pts = p.verts[np.all((p.verts >= lo) & (p.verts <= hi), axis=1)]
+        pts = _edge_samples(p, lo, hi)
         if len(pts) and (_near(pts, q.corners, CONTACT).any() or _inside(pts, q.corners).any()):
             return True
     return False
@@ -194,21 +222,29 @@ def _pin_axis(parts, report):
         if not partners:
             report.add(False, "pin_axis", [pin.name], "pin with no lug or clevis around it")
             continue
-        pa = _unit(pin.axis) if pin.axis is not None else None
+        pa = _unit(pin.axis) if pin.axis is not None else _principal(pin.verts, longest=True)
         pp = np.asarray(pin.point, float) if pin.point is not None else pin.verts.mean(0)
         for lug in partners:
             why = []
-            if pa is not None and lug.axis is not None:
-                ang = math.degrees(math.acos(min(1.0, abs(float(pa @ _unit(lug.axis))))))
-                if ang > PIN_ANGLE:
-                    why.append(f"{ang:.1f} degrees off the {lug.role}'s axis")
-            if pa is not None:
-                lp = np.asarray(lug.point, float) if lug.point is not None else lug.verts.mean(0)
-                off = np.linalg.norm(np.cross(lp - pp, pa))
+            la = _unit(lug.axis) if lug.axis is not None else _principal(lug.verts, longest=False)
+            ang = math.degrees(math.acos(min(1.0, abs(float(pa @ la)))))
+            if ang > PIN_ANGLE:
+                why.append(f"{ang:.1f} degrees off the {lug.role}'s axis")
+            if lug.point is not None:
+                off = np.linalg.norm(np.cross(np.asarray(lug.point, float) - pp, pa))
                 if off > PIN_OFFSET:
                     why.append(f"{off * 1000:.1f} mm off the {lug.role}'s eye")
+            else:
+                report.add(False, "pin_axis", [pin.name, lug.name],
+                           f"the {lug.role}'s eye isn't tagged (se2_point), so the pin's offset wasn't checked")
             if why:
                 report.add(True, "pin_axis", [pin.name, lug.name], "; ".join(why))
+
+
+def _principal(verts: np.ndarray, *, longest: bool) -> np.ndarray:
+    """A part's longest (a pin) or thinnest (a lug plate) direction, from its vertices' spread."""
+    w, v = np.linalg.eigh(np.cov((verts - verts.mean(0)).T))
+    return v[:, -1 if longest else 0]
 
 
 def _coplanar(parts, report):
@@ -257,13 +293,15 @@ def _box_uv(parts, report):
     for p in parts:
         if p.uvs is None or len(p.tris) < 8:
             continue
-        P = p.corners
+        V = p.local if p.local is not None else p.verts
+        P = V[p.tris]
         n = np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0])
         ln = np.linalg.norm(n, axis=1)
         keep = ln > 1e-12
         nu = n[keep] / ln[keep, None]
-        dirs = {tuple(np.round(v * 12).astype(int)) for v in nu}       # ~5 degree bins
-        if len(dirs) <= 8:                                              # flat-sided: box projection is fine
+        # curved: most of the surface faces away from the six axes (a few chamfers don't make a box curved)
+        off_axis = np.abs(nu).max(1) < math.cos(math.radians(5))
+        if ln[keep][off_axis].sum() <= 0.5 * ln[keep].sum():
             continue
         k = np.argmax(np.abs(n[keep]), axis=1)
         proj = np.array([[np.delete(c, kk) for c in tri] for tri, kk in zip(P[keep], k)]).reshape(-1, 2)

@@ -142,3 +142,59 @@ def test_part_role_falls_back_to_name_prefix():
     assert GC.Part("pin_main", np.zeros((3, 3)), np.array([[0, 1, 2]])).role == "pin"
     assert GC.Part("mount_plate.001", np.zeros((3, 3)), np.array([[0, 1, 2]])).role == "mount"
     assert GC.Part("Body", np.zeros((3, 3)), np.array([[0, 1, 2]])).role is None
+
+
+def test_crossing_parts_touch():
+    mount = box("base", (-3, -0.2, 0), (3, 0.2, 0.2), role="mount")
+    rail_a = box("rail_a", (-3, -1, 0.2), (3, -0.8, 0.4))
+    rail_b = box("rail_b", (-3, 0.8, 0.2), (3, 1.0, 0.4))
+    post = box("post", (-0.1, -1.0, 0.0), (0.1, 1.0, 0.2))           # carries both rails off the base
+    deck = box("deck", (-0.5, -1.2, 0.4), (0.5, 1.2, 0.5))           # laid across rails longer than it
+    assert not _checks(GC.run([mount, post, rail_a, rail_b, deck]), "load_path")
+    beam_x = box("beam_x", (-1, -0.1, 0.2), (1, 0.1, 0.4))           # rests on the base
+    beam_y = box("beam_y", (-0.1, -1, 0.25), (0.1, 1, 0.35))         # lapped through it, a "+" joint
+    assert not _checks(GC.run([mount, beam_x, beam_y]), "load_path")
+
+
+def _rotated(part, deg):
+    a = math.radians(deg)
+    R = np.array([[1, 0, 0], [0, math.cos(a), -math.sin(a)], [0, math.sin(a), math.cos(a)]])
+    part.local = part.verts.copy()
+    part.verts = part.verts @ R.T
+    return part
+
+
+def test_box_uv_reads_the_local_frame():
+    c = cyl("tube", (0, 0, 0), (0, 0, 1), 0.3)
+    c.uvs = _box_projected(c)                                      # projected upright, in its own frame
+    assert _checks(GC.run([_rotated(c, 30)]), "box_uv")
+
+
+def prism(name, poly, z0, z1):
+    """A closed prism over a convex 2D polygon (counter-clockwise)."""
+    n = len(poly)
+    v = np.array([(x, y, z0) for x, y in poly] + [(x, y, z1) for x, y in poly] + [(0, 0, z0), (0, 0, z1)], float)
+    t = []
+    for i in range(n):
+        j = (i + 1) % n
+        t += [(i, j, n + j), (i, n + j, n + i), (2 * n, j, i), (2 * n + 1, n + i, n + j)]
+    return GC.Part(name, v, np.array(t))
+
+
+def test_chamfered_box_is_not_curved():
+    a, b = 0.5, 0.45                                               # a 1 m square with 5 cm chamfered corners
+    octo = [(a, -b), (a, b), (b, a), (-b, a), (-a, b), (-a, -b), (-b, -a), (b, -a)]
+    part = prism("chamfered", octo, 0.0, 1.0)
+    part.uvs = _box_projected(part)
+    assert not _checks(GC.run([part]), "box_uv")
+
+
+def test_pin_axis_is_inferred_without_tags():
+    lug = box("lug_eye", (-0.05, -0.1, -0.2), (0.05, 0.1, 0.1))
+    tilted = cyl("pin_main", (-0.15, 0, -0.015), (0.15, 0, 0.015), 0.04)    # 5.7 degrees off, no se2_axis
+    report = GC.run([lug, tilted])
+    assert any(f["check"] == "pin_axis" and "degrees off" in f["detail"] for f in report.failures)
+    square = cyl("pin_main", (-0.15, 0, 0.02), (0.15, 0, 0.02), 0.04)
+    report = GC.run([lug, square])
+    assert not [f for f in report.failures if f["check"] == "pin_axis"]
+    assert any(f["check"] == "pin_axis" and "se2_point" in f["detail"] for f in report.warnings)
