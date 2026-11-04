@@ -37,6 +37,12 @@ def _is_tool(d: Path) -> bool:
     return d.is_dir() and ((d / "proton").is_file() or (d / "compatibilitytool.vdf").is_file())
 
 
+def _has_wine(d: Path) -> bool:
+    """Whether a build carries its own Wine, which the SDK tools run through; a launch-only compatibility tool (a mod
+    manager's redirector) doesn't."""
+    return (d / "files" / "bin" / "wine").is_file()
+
+
 def _internal_names(tool: Path) -> set[str]:
     try:
         data = parse_vdf((tool / "compatibilitytool.vdf").read_text(encoding="utf-8", errors="replace"))
@@ -125,7 +131,7 @@ def proton_build(steam_root: Path, *, configured: str | None, libraries: Iterabl
     own builds (`steamapps/common/Proton ...` in any of `libraries`; the Steam root is always searched).
     `configured` (a name or a path) wins and is returned even if absent, so the caller can name it in an error.
     Otherwise the tool Steam maps to the game (`config/config.vdf` `CompatToolMapping`), then the newest build in
-    `compatibilitytools.d`, then the newest of Steam's own Proton builds.
+    `compatibilitytools.d`, then the newest of Steam's own Proton builds, skipping any build without its own Wine.
     """
     libs = [steam_root, *(lib for lib in libraries if lib != steam_root)]
     custom = _custom_tools(steam_root)
@@ -137,11 +143,12 @@ def proton_build(steam_root: Path, *, configured: str | None, libraries: Iterabl
     mapped = _mapped_tool_name(steam_root)
     if mapped:
         hit = _resolve_name(mapped, custom, libs)
-        if hit:
+        if hit and _has_wine(hit):
             return hit
-    if custom:
-        return max(custom, key=lambda t: _natural(t.name))
-    official = _official_tools(libs)
+    usable = [t for t in custom if _has_wine(t)]
+    if usable:
+        return max(usable, key=lambda t: _natural(t.name))
+    official = [t for t in _official_tools(libs) if _has_wine(t)]
     return max(official, key=_official_rank) if official else None
 
 

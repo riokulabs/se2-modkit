@@ -29,7 +29,8 @@ def rep(r) -> dict:
     return {"occupied": r["occupied_in_box"], "total": r["box_cells"], "outside": r["occupied_outside_box"],
             "faces": {d: {"groups": f["groups"], "coverage": round(f["box_face_coverage_pct"] / 100.0, 4)}
                       for d, f in r["faces"].items()},
-            "free_cells": [list(c) for c in r["free_cells"]], "shift": list(r["shift"])}
+            "free_cells": [list(c) for c in r["free_cells"]], "shift": list(r["shift"]),
+            "cell_groups": r["occupancy_groups"]}
 
 
 def check(hooks, spec, bounds, *, analyse: Callable | None = None, models_dir=None) -> dict:

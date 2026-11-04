@@ -86,9 +86,31 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     lg.add_argument("job", type=_job_id, metavar="ID")
     lg.add_argument("-f", "--follow", action="store_true", help="keep printing until the job ends")
 
-    c = sub.add_parser("cancel", help="cancel jobs: SIGTERM to the job's process group, SIGKILL 10 s later")
+    c = sub.add_parser("cancel", help="cancel jobs: SIGTERM to the job's process group, SIGKILL 10 s later "
+                                      "(two minutes for a live Blender)")
     c.add_argument("jobs", type=_job_id, nargs="*", metavar="ID")
     c.add_argument("--all", action="store_true", help="cancel every queued and running job")
+
+    sub.add_parser("clear", help="delete finished jobs and their logs (those that ended in the last "
+                                 f"{Q.CLEAR_GRACE:g} s stay)")
+    sub.add_parser("pause", help="pause the queue: running jobs carry on, nothing new starts")
+    sub.add_parser("resume", help="resume a paused queue")
+
+    m = sub.add_parser("move", help="move a waiting job within the queue")
+    m.add_argument("job", type=_job_id, metavar="ID")
+    where = m.add_mutually_exclusive_group(required=True)
+    where.add_argument("--to", type=int, metavar="N", help="to place N in the queue (1 = next to start)")
+    where.add_argument("--top", action="store_true", help="next to start")
+    where.add_argument("--bottom", action="store_true", help="last to start")
+    where.add_argument("--up", action="store_true", help="one place earlier")
+    where.add_argument("--down", action="store_true", help="one place later")
+
+    bl = sub.add_parser("blender", help="start a live, windowed Blender as a queue job (next in line); "
+                                         "cancelling it saves the open file, then closes Blender")
+    bl.add_argument("blend_file", nargs="?", type=Path, metavar="FILE.blend", help="file to open")
+    bl.add_argument("--gpu", type=_gpu, default="auto", metavar="auto|N", help="GPU (default: least busy)")
+
+    sub.add_parser("gui", help="open a window showing the queue and the GPUs, with pause, reorder and cancel")
 
     r = sub.add_parser("run", help="run the queue runner in the foreground (normally started by submit)")
     r.add_argument("--idle-exit", type=_seconds, default=None, metavar="S",
@@ -99,7 +121,8 @@ def _settings(env) -> Q.Settings:
     return Q.Settings.from_config(load_user_config(env.config_dir / "config.toml"))
 
 
-@register("queue", "Job queue for GPU-heavy work: queue submit|wait|status|log|cancel|run", add_args=_add_args,
+@register("queue", "Job queue for GPU-heavy work: queue submit|wait|status|log|cancel|clear|pause|resume|move|"
+                   "blender|gui|run", add_args=_add_args,
           check_game_version=False)
 def cmd_queue(args, env) -> int:
     store = Q.Store(args.queue_dir if args.queue_dir is not None else env.cache_dir / "queue")
@@ -133,12 +156,15 @@ def _dispatch(args, env, store: Q.Store) -> int:
         if not args.all:
             done = [j for j in jobs if j.final]
             jobs = [j for j in jobs if not j.final or j in done[-10:]]
+        if any(j.rank is not None for j in jobs if j.state == "queued"):   # reordered: waiting jobs in start order
+            jobs = [j for j in jobs if j.state != "queued"] + sorted((j for j in jobs if j.state == "queued"),
+                                                                     key=Q.queue_key)
         if store.runner_alive():
             pid = store.runner_pid()
             runner = f"running (pid {pid})" if pid else "running"
         else:
             runner = "not running"
-        print(f"runner: {runner}; log: {store.runner_log}")
+        print(f"runner: {runner}{'; queue PAUSED' if store.paused else ''}; log: {store.runner_log}")
         if jobs:
             print("\n".join(Q.status_lines(store, jobs)))
         return 0
@@ -150,10 +176,42 @@ def _dispatch(args, env, store: Q.Store) -> int:
         changed = store.cancel(None if args.all else args.jobs)
         for job in changed:
             print(f"cancelled job {job.id} {job.name}" if job.final else
-                  f"stopping job {job.id} {job.name} (SIGTERM, then SIGKILL after {Q.KILL_GRACE:g}s)")
+                  f"stopping job {job.id} {job.name} (SIGTERM, then SIGKILL after {Q.kill_grace(job):g}s)")
         if not changed:
             print("nothing to cancel")
         return 0
+    if what == "clear":
+        print(f"cleared {store.clear_finished()} finished jobs")
+        return 0
+    if what in ("pause", "resume"):
+        store.set_paused(what == "pause")
+        print("queue paused: running jobs carry on, nothing new starts" if what == "pause" else "queue resumed")
+        return 0
+    if what == "move":
+        order = store.queued()
+        ids = [j.id for j in order]
+        if args.job not in ids:
+            raise Q.QueueError(f"Job {args.job} is not waiting in the queue, so it can't be moved.")
+        here = ids.index(args.job)
+        to = (0 if args.top else len(ids) - 1 if args.bottom else here - 1 if args.up else here + 1 if args.down
+              else args.to - 1)
+        order = store.move(args.job, to)
+        print("queue: " + ", ".join(f"{j.id} {j.name}" for j in order))
+        return 0
+    if what == "blender":
+        if env.blender is None:
+            raise Q.QueueError("No Blender found: set it with --blender, SE2_BLENDER or config blender.")
+        if args.blend_file is not None and not args.blend_file.is_file():
+            raise Q.QueueError(f"There is no file {args.blend_file}.")
+        job = store.submit_blender(env.blender, args.blend_file, gpu=args.gpu)
+        print(job.id)
+        Q.ensure_runner(store)
+        if store.paused:
+            print("the queue is paused: Blender starts once it is resumed (se2mod queue resume)", file=sys.stderr)
+        return 0
+    if what == "gui":
+        from .. import queue_gui
+        return queue_gui.main(store, _settings(env), env.blender)
     if what == "run":
         return Q.Runner(store, _settings(env)).run(idle_exit=args.idle_exit)
     raise Q.QueueError(f"unknown queue command {what}")

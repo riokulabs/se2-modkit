@@ -69,6 +69,19 @@ def test_status_log_and_cancel(run, q):
     assert run("queue", "--queue-dir", str(qdir), "cancel")[0] == 1
 
 
+
+def test_cancel_names_each_running_jobs_grace(run, q):
+    qdir, _ = q
+    store = Q.Store(qdir)
+    for argv, kind in ((["echo"], ""), (["blender"], "blender")):
+        job = store.submit(argv, environ={}, kind=kind)
+        job.state, job.started = "running", 1.0
+        store.save(job)
+    code, out, _ = run("queue", "--queue-dir", str(qdir), "cancel", "--all")
+    assert code == 0
+    assert out.splitlines() == [f"stopping job 1 echo (SIGTERM, then SIGKILL after {Q.KILL_GRACE:g}s)",
+                                f"stopping job 2 blender (SIGTERM, then SIGKILL after {Q.BLENDER_KILL_GRACE:g}s)"]
+
 def test_bad_queue_config_is_one_sentence(run, q, tmp_path, monkeypatch):
     qdir, _ = q
     cfg = tmp_path / "c.toml"

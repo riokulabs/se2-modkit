@@ -66,3 +66,24 @@ def test_gpu_pick_without_gpus_prints_zero_and_busy_refuses(run, monkeypatch):
     monkeypatch.setattr(gpu, "blender_processes", lambda: [(1, "blender -b")])
     code, out, err = run("gpu", "pick", "--busy")
     assert code == 1 and out == "" and "already running" in err
+
+
+def test_vulkan_names_drop_the_driver_note():
+    text = VULKANINFO.replace("GPU0:\n", "GPU0:\n    deviceName        = AMD Radeon RX 7900 XT (RADV NAVI31)\n")
+    assert gpu.parse_vulkan_names(text) == {0: "AMD Radeon RX 7900 XT", 2: "llvmpipe"}
+
+
+@sysfs_names
+def test_read_stats_reads_load_vram_and_hwmon(tmp_path):
+    sysfs = _sysfs(tmp_path, {"0000:44:00.0": (37, 2 * 1024 ** 3), "0000:09:00.0": (0, 0)})
+    node = sysfs / "0000:44:00.0"
+    (node / "mem_info_vram_total").write_text(f"{20 * 1024 ** 3}\n")
+    mon = node / "hwmon" / "hwmon3"
+    mon.mkdir(parents=True)
+    for name, value in {"temp1_input": 62000, "temp1_label": "edge", "temp2_input": 72000, "temp2_label": "junction",
+                        "power1_average": 69000000, "power1_cap": 282000000, "fan1_input": 583}.items():
+        (mon / name).write_text(f"{value}\n")
+    hot, idle = gpu.read_stats([(0, "0000:44:00.0", "RX"), (1, "0000:09:00.0", "")], sysfs)
+    assert (hot.busy, hot.vram_used, hot.vram_total) == (37, 2 * 1024 ** 3, 20 * 1024 ** 3)
+    assert (hot.temp, hot.temp_hot, hot.power, hot.power_cap, hot.fan) == (62.0, 72.0, 69.0, 282.0, 583)
+    assert (idle.busy, idle.vram_total, idle.temp, idle.power) == (0, None, None, None)   # unreported stays None

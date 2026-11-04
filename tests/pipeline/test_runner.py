@@ -199,3 +199,26 @@ def test_check_placement_outside_blender_says_so(hooks, capsys):
         pytest.skip("inside Blender")
     assert _runner(hooks, bounds=lambda s: ((0, 0, 0), (0, 0, 0))).main(["--check-placement"]) == 2
     assert "inside Blender" in capsys.readouterr().err
+
+
+def test_too_many_cell_groups_fails_the_build(hooks, synthetic_spec):
+    r = _runner(hooks)
+    spec = synthetic_spec()
+    r.check_cell_groups(spec, {"placement": {"cell_groups": 127}})
+    r.check_cell_groups(spec, {"placement": {}})                 # a mod's own placement entry without the count
+    with pytest.raises(SystemExit, match=f"{spec.name}: its occupied cells form 128 groups"):
+        r.check_cell_groups(spec, {"placement": {"cell_groups": 128}})
+
+
+def test_check_placement_fails_on_too_many_cell_groups(hooks, monkeypatch):
+    from se2modkit.pipeline import placement_check as PC
+    groups = {"XX_Box_Small": 3, "XX_Panel": 300}
+    monkeypatch.setattr(PC, "check", lambda h, spec, bounds, *, analyse=None, models_dir=None:
+                        {"nonfractured": {"cell_groups": groups[spec.name]}})
+    for name in groups:
+        (hooks.paths.models / name).mkdir(parents=True)
+        (hooks.paths.models / name / "export.json").write_text("{}", encoding="utf-8")
+    r = _runner(hooks, bounds=lambda spec: ((0, 0, 0), (0, 0, 0)))
+    with pytest.raises(SystemExit, match="XX_Panel: its occupied cells form 300 groups") as e:
+        r.check_placement(r.select(["all"]))
+    assert "XX_Box_Small" not in str(e.value)

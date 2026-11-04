@@ -72,10 +72,17 @@ def test_game_mods_dir_proton(tmp_path):
     assert game_mods_dir_proton(tmp_path) == tmp_path / "drive_c/users/steamuser/Documents/SpaceEngineers2/Mods"
 
 
-def _tool(root: Path, dirname: str, internal: str | None = None) -> Path:
+def _wine(d: Path) -> None:
+    (d / "files" / "bin").mkdir(parents=True)
+    (d / "files" / "bin" / "wine").write_text("", encoding="utf-8")
+
+
+def _tool(root: Path, dirname: str, internal: str | None = None, wine: bool = True) -> Path:
     d = root / "compatibilitytools.d" / dirname
     d.mkdir(parents=True)
     (d / "proton").write_text("#!/bin/sh\n", encoding="utf-8")
+    if wine:
+        _wine(d)
     name = internal or dirname
     (d / "compatibilitytool.vdf").write_text(
         f'"compatibilitytools"\n{{\n  "compat_tools"\n  {{\n    "{name}" // internal name\n'
@@ -114,6 +121,22 @@ def test_proton_newest_fallback(tmp_path):
     assert proton_build(root, configured=None) == newest
 
 
+def test_proton_skips_tools_without_wine(tmp_path):
+    # a launch-only redirector (e.g. a mod manager's) sorts after the GE builds but cannot run the SDK tools
+    root = tmp_path / "Steam"
+    newest = _tool(root, "GE-Proton10-3")
+    _tool(root, "mo2_1091500_proton_redirector", wine=False)
+    assert proton_build(root, configured=None) == newest
+    _compat_mapping(root, {"1133870": "mo2_1091500_proton_redirector"})
+    assert proton_build(root, configured=None) == newest
+
+
+def test_proton_none_when_no_tool_has_wine(tmp_path):
+    root = tmp_path / "Steam"
+    _tool(root, "redirector", wine=False)
+    assert proton_build(root, configured=None) is None
+
+
 def test_proton_configured_wins(tmp_path):
     root = tmp_path / "Steam"
     _tool(root, "GE-Proton10-3")
@@ -131,6 +154,7 @@ def _official(lib: Path, dirname: str) -> Path:
     d = lib / "steamapps" / "common" / dirname
     d.mkdir(parents=True)
     (d / "proton").write_text("#!/bin/sh\n", encoding="utf-8")
+    _wine(d)
     (d / "toolmanifest.vdf").write_text('"manifest"\n{\n  "commandline" "/proton %verb%"\n}\n', encoding="utf-8")
     return d
 

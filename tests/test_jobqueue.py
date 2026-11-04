@@ -317,6 +317,23 @@ def test_a_job_that_ignores_sigterm_is_killed_after_the_grace(runner, monkeypatc
     assert runner.store.load(job.id).exit == 137
 
 
+def test_a_live_blender_gets_longer_to_save_before_it_is_killed(tmp_path):
+    store = Q.Store(tmp_path)
+    plain = store.submit(["echo"], environ={})
+    live = store.submit(["blender"], environ={}, kind="blender")
+    assert Q.kill_grace(plain) == Q.KILL_GRACE
+    assert Q.kill_grace(live) == Q.BLENDER_KILL_GRACE > Q.KILL_GRACE
+
+
+@posix
+def test_cancel_gives_a_live_blender_its_longer_grace(runner):
+    code = "import time\nprint('ready', flush=True)\ntime.sleep(120)"
+    job = runner.store.submit(_py(code), environ={}, kind="blender")
+    _spin(runner, lambda: "ready" in _text(runner.store.log_path(job.id)))
+    runner.store.cancel([job.id])
+    runner.tick()
+    assert runner.kill_at[job.id] - runner.clock() > Q.KILL_GRACE
+
 @posix
 def test_job_timeout(runner):
     job = runner.store.submit(_py("import time; time.sleep(120)"), timeout=0.5, environ={})
@@ -426,3 +443,124 @@ def test_runner_env_lets_a_fresh_interpreter_import_se2modkit(tmp_path):
     out = subprocess.run([sys.executable, "-S", "-c", "import se2modkit, sys; print('ok')"], env=env, cwd=tmp_path,
                          capture_output=True, text=True, timeout=60)
     assert out.returncode == 0 and out.stdout.strip() == "ok", out.stderr
+
+
+@posix                                          # no systemd on Windows: the line is None there by design
+def test_runner_service_line_keeps_the_runner_out_of_the_callers_cgroup(tmp_path, monkeypatch):
+    """With a systemd user manager the runner starts as its own user unit (one name per queue directory), logs to
+    runner.log, and carries the submitter's environment except systemd's own per-unit variables."""
+    monkeypatch.setattr(Q.shutil, "which", lambda name: "/usr/bin/" + name)
+    env = {"XDG_RUNTIME_DIR": "/run/user/1000", "DISPLAY": ":0", "PYTHONPATH": "/kit", "INVOCATION_ID": "abc",
+           "BAD": "two\nlines"}
+    cmd = Q.systemd_runner_command(tmp_path, env)
+    assert cmd[:4] == ["systemd-run", "--user", "--collect", "--quiet"]
+    assert f"--unit={Q.runner_unit(tmp_path)}" in cmd and Q.runner_unit(tmp_path) == Q.runner_unit(tmp_path / ".")
+    assert Q.runner_unit(tmp_path) != Q.runner_unit(tmp_path / "other")
+    assert f"StandardOutput=append:{tmp_path / 'runner.log'}" in cmd
+    assert f"TimeoutStopSec={Q.BLENDER_KILL_GRACE + 30:g}" in cmd          # longer than a live Blender's save
+    assert "--setenv=DISPLAY" in cmd and "--setenv=PYTHONPATH" in cmd
+    assert not any(a.startswith(("--setenv=INVOCATION_ID", "--setenv=BAD")) for a in cmd)
+    assert not any(":0" in a or "/kit" in a for a in cmd)        # names only: values never reach the command line
+    assert cmd[cmd.index("--") + 1:] == Q.runner_command(tmp_path)
+
+
+def test_runner_service_line_needs_a_user_manager(tmp_path, monkeypatch):
+    monkeypatch.setattr(Q.shutil, "which", lambda name: None)
+    assert Q.systemd_runner_command(tmp_path, {"XDG_RUNTIME_DIR": "/run/user/1000"}) is None
+    monkeypatch.setattr(Q.shutil, "which", lambda name: "/usr/bin/" + name)
+    assert Q.systemd_runner_command(tmp_path, {}) is None          # no user session to talk to
+
+
+def test_spawn_runner_falls_back_to_a_detached_child(tmp_path, monkeypatch):
+    """If systemd-run fails (say the unit name is still taken), the runner starts the old way."""
+    monkeypatch.setattr(Q, "systemd_runner_command", lambda root, env: ["systemd-run", "--user"])
+    monkeypatch.setattr(Q.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 1, "", "exists"))
+    started = []
+    monkeypatch.setattr(Q.subprocess, "Popen", lambda argv, **kw: started.append((argv, kw)) or "proc")
+    assert Q.spawn_runner(tmp_path) == "proc"
+    argv, kw = started[0]
+    assert argv == Q.runner_command(tmp_path)
+    if os.name == "nt":
+        assert kw.get("creationflags", 0) & subprocess.DETACHED_PROCESS
+    else:
+        assert kw.get("start_new_session")
+
+
+def test_move_reorders_waiting_jobs(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    a, b, c = (store.submit(["true"], name=n, environ={}) for n in "abc")
+    assert [j.id for j in store.queued()] == [a.id, b.id, c.id]
+    assert [j.id for j in store.move(c.id, 0)] == [c.id, a.id, b.id]
+    assert [j.id for j in store.move(c.id, 99)] == [a.id, b.id, c.id]          # clamped to the end
+    d = store.submit(["true"], name="d", environ={})
+    assert [j.id for j in store.queued()] == [a.id, b.id, c.id, d.id]         # a new job still joins at the end
+    store.cancel([b.id])
+    with pytest.raises(Q.QueueError):
+        store.move(b.id, 0)                                                     # only waiting jobs move
+
+
+def test_plan_starts_the_moved_job_first(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    a, b = store.submit(["true"], name="a", environ={}), store.submit(["true"], name="b", environ={})
+    store.move(b.id, 0)
+    started = Q.plan(store.queued(), [], outside=0.0, gpus=[], settings=Q.Settings())
+    assert [j.id for j, _ in started] == [b.id]                                 # heavy jobs: one at a time
+
+
+@posix
+def test_paused_queue_starts_nothing_and_resumes(runner):
+    runner.store.set_paused(True)
+    job = runner.store.submit(_py("print('hi')"), name="later", environ={})
+    assert runner.tick() is True                                                # stays up while a job waits
+    assert _state(runner, job.id) == "queued"
+    runner.store.set_paused(False)
+    _spin(runner, lambda: runner.store.load(job.id).final)
+    assert _state(runner, job.id) == "done"
+
+
+def test_cli_pause_move_and_status(tmp_path):
+    qdir = tmp_path / "q"
+    store = Q.Store(qdir)
+    env = dict(os.environ)
+
+    def _cli(*args):
+        return globals()["_cli"](*args, env=env)
+
+    a, b = store.submit(["true"], name="first", environ={}), store.submit(["true"], name="second", environ={})
+    assert _cli("queue", "--queue-dir", str(qdir), "pause").returncode == 0 and store.paused
+    m = _cli("queue", "--queue-dir", str(qdir), "move", str(b.id), "--top")
+    assert m.returncode == 0 and m.stdout.strip() == f"queue: {b.id} second, {a.id} first"
+    st = _cli("queue", "--queue-dir", str(qdir), "status").stdout.splitlines()
+    assert "queue PAUSED" in st[0] and [ln.split()[0] for ln in st[2:]] == [str(b.id), str(a.id)]
+    bad = _cli("queue", "--queue-dir", str(qdir), "move", "99", "--up")
+    assert bad.returncode == 1 and "not waiting" in bad.stderr
+    assert _cli("queue", "--queue-dir", str(qdir), "resume").returncode == 0 and not store.paused
+
+
+def test_clear_finished_keeps_jobs_that_just_ended(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    old, new, waiting = (store.submit(["true"], name=n, environ={}) for n in ("old", "new", "waiting"))
+    for job, ended in ((old, 100.0), (new, 195.0)):
+        job.state, job.ended = "done", ended
+        store.save(job)
+    assert store.clear_finished(now=200.0) == 1                                 # "new" ended 5 s ago and stays
+    assert store.load(old.id) is None and store.load(new.id) and store.load(waiting.id)
+
+
+def test_live_blender_session_jumps_the_queue_and_is_one_at_a_time(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    first = store.submit(["true"], name="render", environ={})
+    blend = tmp_path / "hero.blend"
+    blend.write_bytes(b"")
+    job = store.submit_blender("/opt/blender/blender", blend, environ={})
+    assert job.kind == "blender" and job.name == "blender hero.blend" and job.load == Q.HEAVY
+    assert [j.id for j in store.queued()] == [job.id, first.id]                # next in line
+    assert job.argv[:6] == ["/opt/blender/blender", "--online-mode", "--gpu-backend", "vulkan", "--gpu-device", "{gpu}"]
+    assert job.argv[6] == str(blend.resolve()) and job.argv[-2:] == [
+        "--python", str(Path(Q.__file__).with_name("blender_live.py"))]
+    assert store.live_blender().id == job.id
+    with pytest.raises(Q.QueueError, match="already queued"):
+        store.submit_blender("/opt/blender/blender", environ={})
+    store.cancel([job.id])
+    assert store.live_blender() is None
+    assert "--python" in Q.blender_session_argv("blender") and len(Q.blender_session_argv("blender")) == 8

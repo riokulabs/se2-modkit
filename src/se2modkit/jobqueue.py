@@ -10,13 +10,16 @@ heavy load on an unknown GPU.
 
 Storage is a folder (normally `<cache>/queue`): `jobs/<id>.json` and `jobs/<id>.log` per job, `queue.lock` taken by
 everyone who changes a job file, `runner.lock` held by the one runner for its lifetime (it holds the runner's PID),
-`runner.log` for the runner's progress lines.
+`runner.log` for the runner's progress lines, and `paused` while the queue is paused (running jobs go on; nothing new
+starts). Waiting jobs start in queue order: by id, unless they were moved (`Store.move` gives every waiting job a rank).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -33,6 +36,8 @@ from .env import procs
 LOADS = {"heavy": 1.0, "medium": 0.5, "light": 0.25}
 HEAVY = LOADS["heavy"]
 KILL_GRACE = 10.0             # seconds between SIGTERM and SIGKILL when a job is cancelled or times out
+BLENDER_KILL_GRACE = 120.0    # the same for a live Blender, which saves its open file first; a big .blend takes a while
+CLEAR_GRACE = 10.0            # `clear` keeps jobs that finished this recently (a waiter may not have seen them yet)
 IDLE_EXIT = 600.0             # the runner exits after this long with nothing queued or running
 TICK = 0.5                    # runner poll interval, seconds
 SAMPLE_WINDOW = 1.0           # seconds of GPU load sampling before a placement
@@ -132,6 +137,8 @@ class JobRecord:
     exit: int | None = None
     cancel: bool = False                 # cancel requested
     stopping: str = ""                   # "cancel" or "timeout" once the runner signalled the job
+    rank: float | None = None            # place in the queue once a job was moved (else its id)
+    kind: str = ""                       # "blender": a live, windowed Blender session (see blender_session_argv)
 
     @property
     def final(self) -> bool:
@@ -149,6 +156,20 @@ class JobRecord:
         if self.started is None:
             return None
         return (self.ended if self.ended is not None else now) - self.started
+
+
+def blender_session_argv(blender: Path | str, blend_file: Path | str | None = None) -> list[str]:
+    """A windowed Blender on the queue's GPU with online access on, so the MCP add-on starts its server (it
+    autostarts by default), opening `blend_file` if given. `blender_live.py` makes a stop from the queue save first."""
+    argv = [str(blender), "--online-mode", "--gpu-backend", "vulkan", "--gpu-device", "{gpu}"]
+    if blend_file:
+        argv.append(str(Path(blend_file).resolve()))
+    return argv + ["--python", str(Path(__file__).with_name("blender_live.py"))]
+
+
+def queue_key(job: JobRecord) -> tuple[float, int]:
+    """Sort key of waiting jobs: their rank once the queue was reordered, else their id (first come, first served)."""
+    return (job.rank if job.rank is not None else float(job.id), job.id)
 
 
 def exit_code(job: JobRecord) -> int:
@@ -287,7 +308,7 @@ class Store:
 
     def submit(self, argv: list[str], *, name: str = "", load: float = HEAVY, gpu: str | int = "auto",
                cwd: Path | str | None = None, timeout: float | None = None, env: Mapping[str, str] | None = None,
-               environ: Mapping[str, str] = os.environ) -> JobRecord:
+               environ: Mapping[str, str] = os.environ, kind: str = "") -> JobRecord:
         """Add a job; returns it with its new id. `environ` is the submitter's environment (see CAPTURED_ENV)."""
         if not argv:
             raise QueueError("Nothing to run: put the command after --.")
@@ -303,7 +324,7 @@ class Store:
             counter.write_text(f"{job_id + 1}\n", encoding="utf-8", newline="\n")
             job = JobRecord(id=job_id, argv=list(argv), name=name or Path(argv[0]).name, load=load, gpu_req=gpu,
                             cwd=str(Path(cwd if cwd is not None else os.getcwd()).resolve()), timeout=timeout,
-                            env=job_env, submitted=time.time())
+                            env=job_env, submitted=time.time(), kind=kind)
             self.save(job)
         return job
 
@@ -323,14 +344,69 @@ class Store:
                 changed.append(job)
         return changed
 
-    def prune(self, older_than: float, now: float | None = None) -> None:
-        """Delete finished jobs (and their logs) that ended more than `older_than` seconds ago."""
+    def live_blender(self) -> JobRecord | None:
+        """The live Blender session that is waiting or running, if any (there is at most one: they share a port)."""
+        return next((j for j in self.all() if j.kind == "blender" and not j.final), None)
+
+    def submit_blender(self, blender: Path | str, blend_file: Path | str | None = None, *, gpu: str | int = "auto",
+                       environ: Mapping[str, str] = os.environ) -> JobRecord:
+        """Queue a live Blender session at the front of the queue (it still waits for running jobs to finish)."""
+        if (live := self.live_blender()) is not None:
+            raise QueueError(f"A live Blender is already {live.state} as job {live.id}; stop it first.")
+        name = "blender" + (f" {Path(blend_file).name}" if blend_file else "")
+        job = self.submit(blender_session_argv(blender, blend_file), name=name, load=HEAVY, gpu=gpu,
+                          environ=environ, kind="blender")
+        self.move(job.id, 0)
+        return self.load(job.id) or job
+
+    def queued(self) -> list[JobRecord]:
+        """The waiting jobs, in the order they will start."""
+        return sorted((j for j in self.all() if j.state == "queued" and not j.cancel), key=queue_key)
+
+    def move(self, job_id: int, position: int) -> list[JobRecord]:
+        """Put waiting job `job_id` at `position` (0 = next to start; clamped to the queue) and return the new order."""
+        with self.lock():
+            order = self.queued()
+            job = next((j for j in order if j.id == job_id), None)
+            if job is None:
+                raise QueueError(f"Job {job_id} is not waiting in the queue, so it can't be moved.")
+            order.remove(job)
+            order.insert(max(0, min(position, len(order))), job)
+            for rank, j in enumerate(order):
+                if j.rank != rank:
+                    j.rank = float(rank)
+                    self.save(j)
+        return order
+
+    @property
+    def paused(self) -> bool:
+        return (self.root / "paused").exists()
+
+    def set_paused(self, paused: bool) -> None:
+        """Pause the queue (running jobs carry on, nothing new starts) or resume it."""
+        flag = self.root / "paused"
+        if paused:
+            self.root.mkdir(parents=True, exist_ok=True)
+            flag.write_text(f"{time.time()}\n", encoding="utf-8", newline="\n")
+        else:
+            flag.unlink(missing_ok=True)
+
+    def prune(self, older_than: float, now: float | None = None) -> int:
+        """Delete finished jobs (and their logs) that ended more than `older_than` seconds ago; how many went."""
         now = time.time() if now is None else now
+        gone = 0
         with self.lock():
             for job in self.all():
                 if job.final and job.ended is not None and now - job.ended > older_than:
                     for p in (self.job_file(job.id), self.log_path(job.id)):
                         p.unlink(missing_ok=True)
+                    gone += 1
+        return gone
+
+    def clear_finished(self, now: float | None = None) -> int:
+        """Delete the finished jobs, except those that ended in the last CLEAR_GRACE seconds: a tool waiting on one
+        polls every half second and must still find it. Returns how many went."""
+        return self.prune(CLEAR_GRACE, now)
 
     # the runner lock ---------------------------------------------------------------------------------------------
 
@@ -357,8 +433,49 @@ def runner_command(root: Path) -> list[str]:
             "queue", "--queue-dir", str(root), "run"]
 
 
-def spawn_runner(root: Path) -> subprocess.Popen:
-    """Start a detached runner (it outlives the caller); its output goes to runner.log."""
+# Variables systemd sets for a unit itself; copying the submitter's would confuse the runner's own unit.
+_UNIT_OWN_ENV = ("INVOCATION_ID", "JOURNAL_STREAM", "MANAGERPID", "NOTIFY_SOCKET", "SYSTEMD_EXEC_PID", "LISTEN_FDS",
+                 "LISTEN_PID", "LISTEN_FDNAMES", "MEMORY_PRESSURE_WATCH", "MEMORY_PRESSURE_WRITE")
+
+
+def runner_unit(root: Path) -> str:
+    """The systemd user unit name of the runner for queue directory `root` (one per directory)."""
+    return "se2mod-queue-" + hashlib.sha1(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:8]
+
+
+def kill_grace(job: JobRecord) -> float:
+    """Seconds between SIGTERM and SIGKILL for this job: a live Blender gets longer, because SIGTERM makes it save
+    the open file before it quits."""
+    return BLENDER_KILL_GRACE if job.kind == "blender" else KILL_GRACE
+
+
+def systemd_runner_command(root: Path, env: Mapping[str, str]) -> list[str] | None:
+    """The systemd-run line that starts the runner as its own user service, or None without a systemd user manager.
+
+    In its own unit the runner (and every job it starts) has its own cgroup instead of sharing the cgroup of whatever
+    app the submitter runs in. So restarting that app doesn't take the runner down, and the kernel never has to move
+    days of the runner's file cache to another cgroup when the app's cgroup closes; that move can keep a CPU busy and
+    stall disk writes for many minutes. The unit gets the submitter's environment, as a directly spawned runner
+    would: each variable is named with a bare --setenv=KEY, so systemd-run copies the value from its own environment
+    (run it with `env`) and no value, token or not, ever shows on a command line."""
+    if os.name == "nt" or not shutil.which("systemd-run") or not env.get("XDG_RUNTIME_DIR"):
+        return None
+    log = Path(root) / "runner.log"
+    cmd = ["systemd-run", "--user", "--collect", "--quiet", f"--unit={runner_unit(root)}",
+           f"--description=se2mod job queue runner ({root})", f"--working-directory={root}",
+           "-p", f"StandardOutput=append:{log}", "-p", f"StandardError=append:{log}",
+           "-p", f"TimeoutStopSec={BLENDER_KILL_GRACE + 30:g}"]     # stopping the unit lets a live Blender save
+    for key, value in sorted(env.items()):
+        if key in _UNIT_OWN_ENV or "\n" in value or "=" in key or not key:
+            continue
+        cmd.append(f"--setenv={key}")
+    return cmd + ["--", *runner_command(root)]
+
+
+def spawn_runner(root: Path) -> subprocess.Popen | subprocess.CompletedProcess:
+    """Start a detached runner (it outlives the caller); its output goes to runner.log. Where a systemd user manager
+    runs, the runner gets its own user service (see systemd_runner_command); otherwise, or if that fails, it is a
+    detached child in its own session."""
     root.mkdir(parents=True, exist_ok=True)
     log = root / "runner.log"
     try:
@@ -366,6 +483,16 @@ def spawn_runner(root: Path) -> subprocess.Popen:
             os.replace(log, root / "runner.log.1")
     except OSError:
         pass
+    env = runner_env()
+    service = systemd_runner_command(root, env)
+    if service:
+        try:
+            done = subprocess.run(service, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20,
+                                  env=env)
+        except (OSError, subprocess.TimeoutExpired):
+            done = None
+        if done is not None and done.returncode == 0:
+            return done
     kw: dict = {}
     if os.name == "nt":
         kw["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
@@ -539,7 +666,7 @@ class Runner:
 
     def _stop(self, job: JobRecord, proc: subprocess.Popen, why: str, now: float) -> None:
         job.stopping = why
-        self.kill_at[job.id] = now + KILL_GRACE
+        self.kill_at[job.id] = now + kill_grace(job)
         procgroup.signal_group(proc, "terminate")
         self.store.save(job)
 
@@ -565,12 +692,14 @@ class Runner:
             waiting = [j for j in self.store.all() if j.state == "queued"]
         if not waiting:
             return bool(self.procs)
+        if self.store.paused:
+            return True                  # stay up while jobs wait; start nothing
         own = {p.pid for p in self.procs.values()}
         outside = self.outside(own)
         gpus = self.sampler() if any(j.gpu_req == "auto" for j in waiting) else []
         with self.store.lock():
             jobs = self.store.all()
-            waiting = [j for j in jobs if j.state == "queued" and not j.cancel]
+            waiting = sorted((j for j in jobs if j.state == "queued" and not j.cancel), key=queue_key)
             running = [j for j in jobs if j.state == "running"]
             for job, device in plan(waiting, running, outside=outside, gpus=gpus, settings=self.settings):
                 self._start(job, device)
@@ -580,8 +709,8 @@ class Runner:
         """Stop every job this runner started (the runner itself is being stopped)."""
         with self.store.lock():
             for job_id, proc in list(self.procs.items()):
-                procgroup.stop(proc, KILL_GRACE)
                 job = self.store.load(job_id)
+                procgroup.stop(proc, kill_grace(job) if job is not None else KILL_GRACE)
                 if job is not None and not job.final:
                     job.stopping = job.stopping or "cancel"
                     self._finish(job, proc)
