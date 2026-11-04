@@ -3,7 +3,8 @@
 The plain-Python half: which views a set needs, the next free round, the job the Blender side (`look_run`) reads, the
 queue command, material names to Keen slots, the cameras a `--before` set used, and `finish`, which runs once the
 render is back: it draws the close-ups' locators, checks exposure and the shot standard, and writes the contact sheet
-and `report.json`. Nothing here imports Blender; Pillow only in `finish`.
+and `report.json`, listing the geometry checks' failures (`geocheck.json`) with the rest. Nothing here imports Blender;
+Pillow only in `finish`.
 
 A look set is never the export: no LODs, no fracture, no build. The source is appended into a fresh scene and never
 saved, so a `.blend` open in a live Blender is safe to point at (its last save is what renders).
@@ -90,7 +91,8 @@ def before_cameras(before_dir: Path, block: str, views: list[str]) -> dict[str, 
 
 def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, views: list[str], set_name: str,
               collection: str = "", mount_face: str = "-Z", grid: str = "large", neighbors=(), materials=None,
-              armor_dir: Path | None = None, before: Path | None = None, close=(), fast: bool = True) -> dict:
+              armor_dir: Path | None = None, before: Path | None = None, close=(), fast: bool = True,
+              geocheck: bool = True, tris_budget: int | None = None) -> dict:
     """The JSON `look_run` reads."""
     source = Path(source)
     if not source.is_file():
@@ -109,7 +111,7 @@ def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, 
         "neighbors": list(neighbors), "materials": dict(materials or {}),
         "armor_dir": str(armor_dir) if armor_dir else "", "out": str(Path(out_dir).resolve()),
         "before": before_cameras(before, block, list(views)) if before else {}, "close": list(close),
-        "fast": fast, "load": LOAD, "priority": True,
+        "fast": fast, "load": LOAD, "priority": True, "geocheck": geocheck, "tris_budget": tris_budget,
     }
 
 
@@ -136,6 +138,13 @@ def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = Fals
     problems = shots.check_set(out, block, stage, rnd, interior=interior)
     problems += [f"unmapped material: {m} (renders magenta; map it in [lookdev.materials])"
                  for m in report.get("unmapped_materials", [])]
+    geo = out / "geocheck.json"
+    if geo.is_file():
+        g = json.loads(geo.read_text(encoding="utf-8"))
+        problems += [f"geometry: {f['check']}" + (f" ({', '.join(f['parts'][:4])})" if f["parts"] else "") +
+                     f": {f['detail']}" for f in g.get("failures", [])]
+        report["geocheck"] = {"ok": g.get("ok", True), "failures": len(g.get("failures", [])),
+                              "warnings": len(g.get("warnings", []))}
     report["exposure"] = {p.stem: shots.exposure(p).__dict__ for p in sorted(out.glob(f"{block}_{stage}_r{rnd}_*.png"))}
     report["problems"] = problems
     pngs = sorted(p for p in out.glob(f"{block}_{stage}_r{rnd}_*.png"))

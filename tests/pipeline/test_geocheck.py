@@ -212,3 +212,10 @@ def test_untagged_clevis_and_stubby_pin_warn_instead_of_failing():
     stubby = cyl("pin_short", (-0.015, 0, 0), (0.015, 0, 0), 0.04)     # shorter than it is wide
     report = GC.run([lug, stubby])
     assert not [f for f in report.failures if f["check"] == "pin_axis"]
+
+
+def test_a_tagged_eye_is_not_called_untagged():
+    lug = box("lug_eye", (-0.05, -0.1, -0.2), (0.05, 0.1, 0.1), point=(0, 0, 0))
+    stubby = cyl("pin_short", (-0.015, 0, 0), (0.015, 0, 0), 0.04)
+    warnings = [f["detail"] for f in GC.run([lug, stubby]).warnings if f["check"] == "pin_axis"]
+    assert warnings and not any("se2_point" in w for w in warnings)

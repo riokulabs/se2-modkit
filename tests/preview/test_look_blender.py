@@ -45,6 +45,8 @@ def test_look_set_from_a_saved_blend(tmp_path):
     assert shots.load_camera(out / "XX_Drive_look_r1_front.png")["ortho"] > 0
     assert report["unmapped_materials"] == ["Material.012"]
     assert report["tris"] > 0 and report["seconds"] > 0
+    geo = json.loads((out / "geocheck.json").read_text())
+    assert geo["parts"] == 2 and any(w["check"] == "no_mount" for w in geo["warnings"])
     close = json.loads((out / "close.json").read_text())
     rect = close["XX_Drive_look_r1_3q_front_close-Nozzle"]["rect"]
     assert rect[0] < rect[2] and rect[1] < rect[3]
