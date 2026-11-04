@@ -36,6 +36,9 @@ __all__ = [
 BUILDER_EXE = "VRage.ContentPipeline.Builder.exe"
 EXIT_STALE = 3
 EXIT_GAME_RUNNING = 4
+EXIT_LOCKED = 5
+SDK_LOCK_NAME = "sdk-build.lock"
+SDK_LOCK_TIMEOUT = 3600.0  # seconds a build waits for another session's build
 _META = "VRage:Keen.VRage.ContentPipeline.Metafiles.MetaData"
 _HIDDEN = ".Scripts.hidden-for-build"
 _SEARCH_KEYS = ("GameExecutableSearchPaths", "ReferencedAssembliesSearchPaths")
@@ -278,10 +281,17 @@ def _restore_pruned(mod: Path, held: Path) -> int:
 # --- build ------------------------------------------------------------------------------------------------------
 
 
+def sdk_lock_path(env: SE2Env) -> Path:
+    """The lock every SDK build takes, shared by all sessions on this machine."""
+    return env.cache_dir / SDK_LOCK_NAME
+
+
 def build(env: SE2Env, mod: Path, *, dry_run: bool = False, verbose: bool = False,
-          run: Runner = subprocess.run, assume_game_closed: bool = False) -> int:
+          run: Runner = subprocess.run, assume_game_closed: bool = False,
+          lock_timeout: float = SDK_LOCK_TIMEOUT) -> int:
     """Build `mod` with the SDK builder; returns the exit code (0 ok, builder's code on failure, 3 stale outputs,
-    4 refused because the game is running or the process list is unavailable)."""
+    4 refused because the game is running or the process list is unavailable, 5 another SDK build held the lock for
+    `lock_timeout` seconds). Builds from every session share one lock (`sdk_lock_path`), so two never run at once."""
     if not assume_game_closed and not procs.listing_available():
         print("Cannot tell whether Space Engineers 2 is running (the process list is unavailable); close it and "
               "pass --assume-game-closed to build anyway.", file=sys.stderr)
@@ -296,6 +306,26 @@ def build(env: SE2Env, mod: Path, *, dry_run: bool = False, verbose: bool = Fals
     if project is None:
         raise ModError(f"No mod project in {mod} (want {mod.name}.vrgproj or exactly one .vrgproj).")
     argv, cwd, run_env = builder_invocation(env, project, dry_run=dry_run, verbose=verbose)
+    from .jobqueue import FileLock, QueueError  # late import: jobqueue pulls in the queue machinery
+
+    lock = FileLock(sdk_lock_path(env))
+    if not lock.acquire(blocking=False):
+        print(f"waiting for another SDK build to finish (lock {lock.path}) ...", file=sys.stderr, flush=True)
+        try:
+            lock.acquire(blocking=True, timeout=lock_timeout)
+        except QueueError:
+            print(f"another SDK build still holds {lock.path} after {lock_timeout:g} s; try again when it finishes.",
+                  file=sys.stderr)
+            return EXIT_LOCKED
+    try:
+        return _build_unlocked(env, mod, project, argv, cwd, run_env, dry_run=dry_run, run=run)
+    finally:
+        lock.release()
+
+
+def _build_unlocked(env: SE2Env, mod: Path, project: Path, argv: list[str], cwd: Path, run_env: Mapping[str, str], *,
+                    dry_run: bool, run: Runner) -> int:
+    """The build itself, run while the SDK build lock is held."""
     # An interrupted or failed build can leave Content.tmp/ with folders Wine can't enter, and the next build then
     # fails with access denied. It's the builder's own scratch dir, so clear it before building.
     scratch = mod / "Content.tmp"
