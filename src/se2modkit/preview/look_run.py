@@ -53,7 +53,10 @@ def _load(job: dict) -> bpy.types.Collection:
             for uc in list(o.users_collection):
                 uc.objects.unlink(o)
             holder.objects.link(o)
-    base._exclude(holder)
+    # Left in the working scene's view layer on purpose: Blender evaluates modifiers only for collections in a view
+    # layer, and the checks, the bounds and the triangle count must see what the game will. The shots render their
+    # own scenes, which instance this collection, so the working scene is never rendered.
+    bpy.context.view_layer.update()
     return holder
 
 
@@ -73,7 +76,8 @@ def _materials(holder, table: dict) -> list[str]:
 
 
 def _points(objs, m=Matrix.Identity(4)):
-    return [m @ o.matrix_world @ Vector(b) for o in objs if o.type == "MESH" for b in o.bound_box]
+    deps = bpy.context.evaluated_depsgraph_get()
+    return [m @ o.matrix_world @ Vector(b) for o in objs if o.type == "MESH" for b in o.evaluated_get(deps).bound_box]
 
 
 def _tris(objs) -> int:
