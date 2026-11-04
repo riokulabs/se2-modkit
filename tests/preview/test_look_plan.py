@@ -111,3 +111,13 @@ def test_finish_lists_what_keeps_a_set_back(tmp_path):
     assert any("missing view: mount" in p for p in report["problems"])
     assert any("unmapped material" in p for p in report["problems"])
     assert report["seconds"] == 41.0
+
+
+def test_finish_accepts_a_before_after_set(tmp_path):
+    out = tmp_path / "r2"
+    m = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 5], [0, 0, 0, 1]]
+    for v in shots.REQUIRED["look"]:
+        for extra in ("before", "after"):
+            png = _png(out / f"{shots.shot_name('XX_Drive', 'look', 2, v, extra)}.png")
+            shots.save_camera(png, m, 14.5)
+    assert look.finish(out, block="XX_Drive", stage="look", rnd=2)["problems"] == []

@@ -222,7 +222,8 @@ def check_set(folder: Path, block: str, stage: str, rnd: int, *, interior: bool 
     views = REQUIRED.get(stage, ()) + (("inside",) if interior else ())
     for v in views:
         name = shot_name(block, stage, rnd, v)
-        if not (folder / f"{name}.png").is_file():
+        # the `_after` half of a same-camera pair stands for the view
+        if not (folder / f"{name}.png").is_file() and not (folder / f"{name}_after.png").is_file():
             problems.append(f"missing view: {v} ({name}.png)")
     ours = {}
     for png in sorted(folder.glob("*.png")):

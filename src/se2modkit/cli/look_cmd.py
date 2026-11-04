@@ -23,7 +23,8 @@ def _args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--out", type=Path, help="look folder (default: the mod's Source/Model/preview/look); the set "
                                             "goes in <out>/<block>/r<N>/")
     p.add_argument("--set", dest="set_name", default="neighbors", help="hull, neighbors (default), interior, space")
-    p.add_argument("--views", default="look", help="look (default), concept, or a comma list of views")
+    p.add_argument("--views", default="look", help="look (default), concept, or a comma list of views (a set is "
+                                                  "ready only when it has every view its --stage requires)")
     p.add_argument("--interior", action="store_true", help="the block has an inside: add the inside view")
     p.add_argument("--stage", default="look", choices=("look", "concept", "fix"))
     p.add_argument("--round", type=int, dest="rnd", metavar="N", help="round number (default: the next free one)")
@@ -50,8 +51,8 @@ def _lookdev_config(env: SE2Env, mod: str | None):
     from ..project import ProjectError
     try:
         ref = modarg.resolve(env, mod, need="config")
-    except ProjectError:   # not in a mod project: --out is then required
-        if mod:
+    except ProjectError as e:   # only "no project here" means outside a mod; a broken one is reported
+        if mod or not modarg._no_project(e):
             raise
         return None, PL.LookdevConfig()
     cfg = ref.config
@@ -95,9 +96,9 @@ def cmd_look(args: argparse.Namespace, env: SE2Env) -> int:
     except (PreviewError, PL.PlanError, ProjectError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    jobs = env.cache_dir / "look-jobs"
-    jobs.mkdir(parents=True, exist_ok=True)
-    job_file = jobs / f"{args.block}-r{rnd}.json"
+    out = Path(job["out"])
+    out.mkdir(parents=True, exist_ok=True)
+    job_file = out / "job.json"      # beside its set, so two mods' jobs never share a name
     job_file.write_text(json.dumps(job, indent=1) + "\n", encoding="utf-8", newline="\n")
     script = Path(look.__file__).with_name("look_run.py")
     argv = blender_argv(env, script, [str(job_file)], mod_source=package_root(env), windowed=False)
@@ -112,7 +113,6 @@ def cmd_look(args: argparse.Namespace, env: SE2Env) -> int:
     extra = {"priority": True} if priority else {}
     qjob = store.submit(argv, name=name, load=Q.LOADS[look.LOAD], timeout=LOOK_TIMEOUT, **extra)
     Q.ensure_runner(store)
-    out = Path(job["out"])
     print(f"queued job {qjob.id}: {out}")
     if args.no_wait:
         return 0
