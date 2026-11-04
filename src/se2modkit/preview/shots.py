@@ -4,8 +4,8 @@ A standard set is one PNG per view, named `<block>_<stage>_r<N>_<view>[_<extra>]
 each render so a later round can reuse the exact camera. `extra` is free text after the view: `close-<part>` for a
 close-up (which needs a locator thumbnail, see `add_locator`), `before` / `after` for a same-camera pair.
 
-`check_set` is the gate: a set with a missing view, a failed exposure check, a close-up without a locator or an
-`_after` without a matching `_before` is not ready to show anyone. Plain Python; Pillow is imported only by the
+`check_set` is the gate: a set with a missing view, a failed exposure check, a close-up without a locator, an
+`_after` without a matching `_before`, or a failure in its `geocheck.json` is not ready to show anyone. Plain Python; Pillow is imported only by the
 functions that read or write images, so Blender-side modules can import the names and camera math.
 """
 
@@ -248,7 +248,12 @@ def check_set(folder: Path, block: str, stage: str, rnd: int, *, interior: bool 
                 problems.append(f"before/after cameras differ: {base}")
     geo = folder / "geocheck.json"     # written by `se2mod look`: a set whose geometry fails isn't ready either
     if geo.is_file():
-        for f in json.loads(geo.read_text(encoding="utf-8")).get("failures", []):
-            parts = f" ({', '.join(f['parts'][:4])})" if f.get("parts") else ""
-            problems.append(f"geometry: {f['check']}{parts}: {f['detail']}")
+        try:
+            lines = []
+            for f in json.loads(geo.read_text(encoding="utf-8")).get("failures", []):
+                parts = f" ({', '.join(f['parts'][:4])})" if f.get("parts") else ""
+                lines.append(f"geometry: {f['check']}{parts}: {f['detail']}")
+            problems += lines
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
+            problems.append(f"geometry: geocheck.json unreadable ({type(e).__name__}); re-run the look set")
     return problems

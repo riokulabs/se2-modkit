@@ -60,9 +60,9 @@ def _load(job: dict) -> bpy.types.Collection:
     return holder
 
 
-def _materials(holder, table: dict) -> list[str]:
+def _materials(objs, table: dict) -> list[str]:
     unmapped = []
-    for o in holder.all_objects:
+    for o in objs:
         if o.type != "MESH":
             continue
         for s in o.material_slots:
@@ -119,7 +119,7 @@ def run(job: dict) -> dict:
     objs = [o for o in holder.all_objects if o.type == "MESH" and not o.hide_render]
     if not objs:
         raise SystemExit(f"ERROR: nothing to render in {Path(job['source']).name}")
-    unmapped = _materials(holder, job["materials"])
+    unmapped = _materials(objs, job["materials"])
     bpy.context.view_layer.update()
     rot = Matrix(lookdev.mount_rotation(job["mount_face"])).to_4x4()
     pts = _points(objs, rot)
