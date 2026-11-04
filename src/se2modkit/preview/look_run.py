@@ -115,7 +115,8 @@ def run(job: dict) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     base.configure(out, fast=job["fast"])
     holder = _load(job)
-    objs = [o for o in holder.all_objects if o.type == "MESH"]
+    # what renders: helpers hidden from render (boolean cutters, planning copies) stay out of bounds, counts and checks
+    objs = [o for o in holder.all_objects if o.type == "MESH" and not o.hide_render]
     if not objs:
         raise SystemExit(f"ERROR: nothing to render in {Path(job['source']).name}")
     unmapped = _materials(holder, job["materials"])

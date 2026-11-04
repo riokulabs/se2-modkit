@@ -83,3 +83,22 @@ def test_checks_and_counts_see_modifiers(tmp_path):
                                          views=["front"], set_name="hull"))
     assert report["tris"] == 36
     assert json.loads((out / "geocheck.json").read_text())["tris"] == 36
+
+
+def test_render_hidden_helpers_stay_out_of_bounds_and_counts(tmp_path):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.mesh.primitive_cube_add(size=1.0)
+    body = bpy.context.active_object
+    body.data.materials.append(bpy.data.materials.new("PaintedMetalColorable"))
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(20, 0, 0))
+    cutter = bpy.context.active_object
+    cutter.name = "cutter_far"
+    cutter.hide_render = True
+    src = tmp_path / "cut.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(src), copy=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    out = tmp_path / "look" / "XX_Cut" / "r1"
+    report = look_run.run(look.build_job(source=src, block="XX_Cut", out_dir=out, stage="look", rnd=1,
+                                         views=["front"], set_name="hull"))
+    assert report["tris"] == 12
+    assert max(report["half_extents"]) == pytest.approx(0.5, abs=1e-3)

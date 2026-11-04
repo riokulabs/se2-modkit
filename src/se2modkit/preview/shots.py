@@ -246,4 +246,9 @@ def check_set(folder: Path, block: str, stage: str, rnd: int, *, interior: bool 
                 problems.append(f"before/after without saved cameras: {base}")
             elif not _same_camera(a, b):
                 problems.append(f"before/after cameras differ: {base}")
+    geo = folder / "geocheck.json"     # written by `se2mod look`: a set whose geometry fails isn't ready either
+    if geo.is_file():
+        for f in json.loads(geo.read_text(encoding="utf-8")).get("failures", []):
+            parts = f" ({', '.join(f['parts'][:4])})" if f.get("parts") else ""
+            problems.append(f"geometry: {f['check']}{parts}: {f['detail']}")
     return problems

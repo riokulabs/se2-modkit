@@ -141,8 +141,6 @@ def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = Fals
     geo = out / "geocheck.json"
     if geo.is_file():
         g = json.loads(geo.read_text(encoding="utf-8"))
-        problems += [f"geometry: {f['check']}" + (f" ({', '.join(f['parts'][:4])})" if f["parts"] else "") +
-                     f": {f['detail']}" for f in g.get("failures", [])]
         report["geocheck"] = {"ok": g.get("ok", True), "failures": len(g.get("failures", [])),
                               "warnings": len(g.get("warnings", []))}
     report["exposure"] = {p.stem: shots.exposure(p).__dict__ for p in sorted(out.glob(f"{block}_{stage}_r{rnd}_*.png"))}
