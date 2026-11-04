@@ -25,7 +25,7 @@ __all__ = ["ALIASES", "REQUIRED", "VIEWS", "Exposure", "ShotName", "View", "add_
 
 @dataclass(frozen=True)
 class View:
-    direction: tuple[float, float, float]   # unit vector from the block's centre towards the camera; +Y front, Z up
+    direction: tuple[float, float, float]   # unit vector from the block's center towards the camera; +Y front, Z up
     up: tuple[float, float, float]
     eye: bool                               # True: taken from a standing player's eye (perspective, in context)
 
@@ -61,7 +61,7 @@ REQUIRED = {
     "fix": (),
 }
 
-# Exposure limits on the luminance (0..1) of the subject's pixels. Tuned on real look sets; see the brain practice.
+# Exposure limits on the luminance (0..1) of the subject's pixels, set from renders that read well in review.
 MEAN_LO, MEAN_HI = 0.18, 0.72
 CLIP_HI_MAX, CLIP_LO_MAX = 0.02, 0.05
 _HI, _LO = 250 / 255, 5 / 255
@@ -112,7 +112,7 @@ def _cross(a, b):
 
 
 def fit_distance(half_extents, direction, lens_mm: float, aspect: float, fill: float = 0.8) -> float:
-    """Distance from the box's centre along `direction` at which the box fills `fill` of the frame (Blender's 36 mm
+    """Distance from the box's center along `direction` at which the box fills `fill` of the frame (Blender's 36 mm
     sensor across the wider side). The box is axis-aligned with the given half extents."""
     d = _unit(*direction)
     up = _Y if abs(d[2]) > 0.99 else _Z

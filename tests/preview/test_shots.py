@@ -73,7 +73,7 @@ def test_fit_distance_fills_frame():
     d = shots.fit_distance(half, (0, 1, 0), 25.0, 16 / 9, fill=0.8)
     sensor_h = 36.0 / (16 / 9)                      # Blender's 36 mm sensor fits the wider side
     half_fov_v = math.atan(sensor_h / 2 / 25.0)
-    # the nearest face is 1.25 m closer than the centre; the cube's 2.5 m height fills 0.8 of the frame there
+    # the nearest face is 1.25 m closer than the center; the cube's 2.5 m height fills 0.8 of the frame there
     seen = 2.5 / (2 * (d - 1.25) * math.tan(half_fov_v))
     assert seen == pytest.approx(0.8, rel=0.02)
 
@@ -152,3 +152,18 @@ def test_shots_check_cli_exit_codes(tmp_path, capsys, monkeypatch):
     (tmp_path / "A_concept_r1_top.png").unlink()
     assert cli.main(argv) == 1
     assert "missing view: top" in capsys.readouterr().out
+
+
+def test_old_high_view_keeps_its_angle():
+    """`3q_front_high` has no canonical twin, so old plans keep rendering from the same high angle."""
+    sets = plan.parse_plan({"sets": {"s": {"blocks": ["XX_A"], "shots": [{"name": "x", "camera": "3q_front_high"}]}}})
+    assert sets["s"].shots[0].camera == "3q_front_high"
+    assert plan.CAMERAS["3q_front_high"] == ((-0.5, 0.6, 0.9), False)
+
+
+def test_shots_check_rejects_unknown_stage(tmp_path, monkeypatch):
+    from se2modkit import cli
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    with pytest.raises(SystemExit) as e:
+        cli.main(["shots", "check", str(tmp_path), "--block", "A", "--stage", "looks", "--round", "1"])
+    assert e.value.code == 2

@@ -187,7 +187,8 @@ def _shots_args(p: argparse.ArgumentParser) -> None:
     c = sub.add_parser("check", help="is this set ready to show? missing views, exposure, locators, before/after")
     c.add_argument("folder", type=Path)
     c.add_argument("--block", required=True)
-    c.add_argument("--stage", required=True, help="look, concept or fix (sets which views are required)")
+    c.add_argument("--stage", required=True, choices=("look", "concept", "fix"),
+                   help="which views are required: look, concept or fix")
     c.add_argument("--round", type=int, required=True, dest="rnd", metavar="N")
     c.add_argument("--interior", action="store_true", help="the block has an inside, so the set needs `inside` too")
 
