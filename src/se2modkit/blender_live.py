@@ -51,7 +51,7 @@ def idle_limit() -> float:
 
 def others_waiting(queue_root) -> bool:
     """Is any job waiting in the queue at `queue_root`? (Read straight from its job files; a torn one is skipped.)"""
-    if not queue_root:
+    if not queue_root or Path(queue_root, "paused").exists():   # a paused queue starts nothing after us anyway
         return False
     for path in Path(queue_root, "jobs").glob("*.json"):
         try:
@@ -109,7 +109,11 @@ def _tick():
 
 
 if bpy is not None:
+    # Persistent, and on load_post too: Blender drops plain handlers when a file is opened, which would leave the idle
+    # watch with no input and close a session that is being worked in.
+    _touch = bpy.app.handlers.persistent(_touch)
     signal.signal(signal.SIGTERM, _on_term)
     bpy.app.handlers.depsgraph_update_post.append(_touch)
+    bpy.app.handlers.load_post.append(_touch)
     bpy.app.timers.register(_tick, first_interval=0.5, persistent=True)
     print("se2mod: live Blender session; stopping it from the queue saves the open file first")

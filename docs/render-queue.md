@@ -36,7 +36,7 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 | `--gpu auto\|none\|N` | `auto` (default): the least busy GPU that has room; `none`: no GPU choice; `N`: that Vulkan device |
 | `--cwd DIR` | Working directory (default: the current one) |
 | `--timeout SECONDS` | Stop the job after this long; `wait` then exits 124 |
-| `--priority` | The priority lane: start before plain waiting jobs (a quick preview someone is waiting on). It still never starts beside a running heavy job |
+| `--priority` | The priority lane: start before plain waiting jobs, never beside a running heavy one |
 | `--env K=V` | Extra environment variable for the job (repeatable) |
 
 Everything after the first `--` is the command, taken verbatim (a `--` of its own, as in
@@ -122,6 +122,7 @@ is reported as `lost`.
 Waiting jobs start in submit order unless one was moved: `move` gives every waiting job a rank, and new jobs still
 join at the end. Jobs submitted with `--priority` (such as `se2mod look`) form a lane ahead of the plain jobs; `move`
 orders jobs within their lane. A priority job is next in line, not a pre-emption: a running heavy job finishes first.
+The lane is meant for short jobs: a steady stream of them keeps a waiting heavy job waiting.
 `se2mod build-models MOD BLOCK... --per-block` queues one heavy job per block (`export:<mod>:<block>`) instead of
 building them in one process, so a preview can run between two blocks instead of after the whole batch. While the queue is paused (`<queue folder>/paused` exists), the runner keeps running jobs going and
 stays up, but starts nothing.

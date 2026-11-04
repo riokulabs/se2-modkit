@@ -41,3 +41,35 @@ def test_stops_only_when_idle_and_someone_waits(tmp_path):
     w = BL.IdleWatch(10, now=0.0)
     assert BL.should_stop(w, 20.0, waiting=True) and not BL.should_stop(w, 20.0, waiting=False)
     assert not BL.should_stop(w, 5.0, waiting=True)
+
+
+def test_activity_hook_survives_file_loads(monkeypatch):
+    """Inside Blender the hook is persistent and also runs on load_post, so opening another file counts as activity
+    instead of silently dropping the idle watch's only input."""
+    import importlib
+    import sys
+    import types
+
+    marked = []
+    handlers = types.SimpleNamespace(depsgraph_update_post=[], load_post=[],
+                                     persistent=lambda f: marked.append(f) or f)
+    fake = types.SimpleNamespace(app=types.SimpleNamespace(handlers=handlers, timers=types.SimpleNamespace(
+        register=lambda *a, **k: None)))
+    monkeypatch.setitem(sys.modules, "bpy", fake)
+    monkeypatch.setattr("signal.signal", lambda *a: None)
+    mod = importlib.reload(BL)
+    try:
+        assert mod._touch in marked
+        assert mod._touch in handlers.depsgraph_update_post and mod._touch in handlers.load_post
+    finally:
+        monkeypatch.delitem(sys.modules, "bpy")
+        importlib.reload(BL)
+
+
+def test_a_paused_queue_does_not_count_as_waiting(tmp_path):
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "000002.json").write_text(json.dumps({"id": 2, "state": "queued"}))
+    assert BL.others_waiting(tmp_path) is True
+    (tmp_path / "paused").write_text("")
+    assert BL.others_waiting(tmp_path) is False

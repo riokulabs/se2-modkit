@@ -366,7 +366,7 @@ class Store:
             if (live := self.live_blender()) is not None:
                 raise QueueError(f"A live Blender is already {live.state} as job {live.id}; stop it first.")
             return self._new_job(blender_session_argv(blender, blend_file), name=name, load=HEAVY, gpu=gpu, cwd=None,
-                                 timeout=None, env={"SE2_QUEUE_ROOT": str(self.root)}, environ=environ,
+                                 timeout=None, env={"SE2_QUEUE_ROOT": str(Path(self.root).resolve())}, environ=environ,
                                  kind="blender", priority=True, rank=-1.0)
 
     def queued(self) -> list[JobRecord]:
@@ -386,7 +386,7 @@ class Store:
                 if j.rank != rank:
                     j.rank = float(rank)
                     self.save(j)
-        return order
+        return sorted(order, key=queue_key)   # the order that will run: lanes first
 
     @property
     def paused(self) -> bool:

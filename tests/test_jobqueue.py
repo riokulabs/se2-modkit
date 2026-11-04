@@ -588,7 +588,7 @@ def test_move_still_orders_within_a_lane(tmp_path):
     store = Q.Store(tmp_path / "q")
     a, b = store.submit(["true"], name="a", environ={}), store.submit(["true"], name="b", environ={})
     p = store.submit(["true"], name="look", priority=True, environ={})
-    store.move(b.id, 0)
+    assert [j.id for j in store.move(b.id, 0)] == [p.id, b.id, a.id]          # the order that will really run
     assert [j.id for j in store.queued()] == [p.id, b.id, a.id]                 # moved first among the plain jobs
 
 
