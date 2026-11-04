@@ -45,6 +45,8 @@ def test_look_set_from_a_saved_blend(tmp_path):
     assert shots.load_camera(out / "XX_Drive_look_r1_front.png")["ortho"] > 0
     assert report["unmapped_materials"] == ["Material.012"]
     assert report["tris"] > 0 and report["seconds"] > 0
+    geo = json.loads((out / "geocheck.json").read_text())
+    assert geo["parts"] == 2 and any(w["check"] == "no_mount" for w in geo["warnings"])
     close = json.loads((out / "close.json").read_text())
     rect = close["XX_Drive_look_r1_3q_front_close-Nozzle"]["rect"]
     assert rect[0] < rect[2] and rect[1] < rect[3]
@@ -63,3 +65,21 @@ def test_before_set_reuses_its_cameras(tmp_path):
                                 set_name="hull", before=r1))
     assert (r2 / "XX_Drive_look_r2_top_before.png").is_file() and (r2 / "XX_Drive_look_r2_top_after.png").is_file()
     assert shots.load_camera(r2 / "XX_Drive_look_r2_top_after.png") == shots.load_camera(r1 / "XX_Drive_look_r1_top.png")
+
+
+def test_checks_and_counts_see_modifiers(tmp_path):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.mesh.primitive_cube_add(size=1.0)
+    cube = bpy.context.active_object
+    cube.name = "mount_plate"
+    cube.data.materials.append(bpy.data.materials.new("PaintedMetalColorable"))
+    arr = cube.modifiers.new("arr", "ARRAY")
+    arr.count = 3
+    src = tmp_path / "arrayed.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(src), copy=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    out = tmp_path / "look" / "XX_Arr" / "r1"
+    report = look_run.run(look.build_job(source=src, block="XX_Arr", out_dir=out, stage="look", rnd=1,
+                                         views=["front"], set_name="hull"))
+    assert report["tris"] == 36
+    assert json.loads((out / "geocheck.json").read_text())["tris"] == 36

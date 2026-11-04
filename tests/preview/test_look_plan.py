@@ -121,3 +121,22 @@ def test_finish_accepts_a_before_after_set(tmp_path):
             png = _png(out / f"{shots.shot_name('XX_Drive', 'look', 2, v, extra)}.png")
             shots.save_camera(png, m, 14.5)
     assert look.finish(out, block="XX_Drive", stage="look", rnd=2)["problems"] == []
+
+
+def test_finish_lists_geometry_failures(tmp_path):
+    out = tmp_path / "r1"
+    for v in shots.REQUIRED["look"]:
+        _png(out / f"XX_Drive_look_r1_{v}.png")
+    (out / "geocheck.json").write_text(json.dumps({
+        "ok": False, "tris": 50000, "parts": 3,
+        "failures": [{"check": "load_path", "parts": ["bracket"], "detail": "1 part(s) don't reach a mount"}],
+        "warnings": [{"check": "untagged", "parts": ["a"], "detail": "1 part(s) have no role"}]}))
+    report = look.finish(out, block="XX_Drive", stage="look", rnd=1)
+    assert report["problems"] == ["geometry: load_path (bracket): 1 part(s) don't reach a mount"]
+    assert report["geocheck"]["warnings"] == 1
+
+
+def test_job_carries_the_geometry_check_settings(tmp_path):
+    job = _job(tmp_path, tris_budget=29000)
+    assert job["geocheck"] is True and job["tris_budget"] == 29000
+    assert _job(tmp_path, geocheck=False)["geocheck"] is False

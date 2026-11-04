@@ -53,7 +53,10 @@ def _load(job: dict) -> bpy.types.Collection:
             for uc in list(o.users_collection):
                 uc.objects.unlink(o)
             holder.objects.link(o)
-    base._exclude(holder)
+    # Left in the working scene's view layer on purpose: Blender evaluates modifiers only for collections in a view
+    # layer, and the checks, the bounds and the triangle count must see what the game will. The shots render their
+    # own scenes, which instance this collection, so the working scene is never rendered.
+    bpy.context.view_layer.update()
     return holder
 
 
@@ -73,7 +76,8 @@ def _materials(holder, table: dict) -> list[str]:
 
 
 def _points(objs, m=Matrix.Identity(4)):
-    return [m @ o.matrix_world @ Vector(b) for o in objs if o.type == "MESH" for b in o.bound_box]
+    deps = bpy.context.evaluated_depsgraph_get()
+    return [m @ o.matrix_world @ Vector(b) for o in objs if o.type == "MESH" for b in o.evaluated_get(deps).bound_box]
 
 
 def _tris(objs) -> int:
@@ -169,6 +173,10 @@ def run(job: dict) -> dict:
             _shoot(sc.shot, name, tuple(pc + d * dist), tuple(pc), lens, None, out)
             close[name] = {"overview": f"{overview}.png", "rect": _pixel_rect(sc.shot.sc, cams["3q_front"], ppts)}
         (out / "close.json").write_text(json.dumps(close, indent=1) + "\n", encoding="utf-8")
+    if job.get("geocheck", True):
+        from se2modkit.pipeline import geocheck as GC
+        from se2modkit.preview.geocheck_blend import parts_from_objects
+        GC.run(parts_from_objects(objs, place), tris_budget=job.get("tris_budget")).write(out / "geocheck.json")
     report = {"source": job["source"], "set": job["set"], "views": job["views"], "seconds": 0.0,
               "unmapped_materials": unmapped, "tris": _tris(objs), "half_extents": list(half)}
     report["seconds"] = round(time.monotonic() - t0, 1)
