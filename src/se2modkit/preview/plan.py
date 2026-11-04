@@ -31,16 +31,19 @@ from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from . import shots
+
 __all__ = ["CAMERAS", "PLAN_NAMES", "STATES", "PlanError", "PreviewSet", "Shot", "contained", "find_plan", "job", "load_plan",
            "parse_plan", "select"]
 
 PLAN_NAMES = ("previews.toml",)
-CAMERAS = {   # preset -> (direction from the block to the camera, orthographic)
-    "front": ((0, 1, 0), True), "back": ((0, -1, 0), True), "left": ((-1, 0, 0), True), "right": ((1, 0, 0), True),
-    "top": ((0, 0.0001, 1), True), "bottom": ((0, 0.0001, -1), True),
-    "3q_front": ((-0.6, 0.8, 0.45), False), "3q_rear": ((0.6, -0.8, 0.45), False),
-    "3q_front_low": ((-0.6, 0.8, 0.12), False), "3q_front_high": ((-0.5, 0.6, 0.9), False),
-}
+# preset -> (direction from the block to the camera, orthographic): the shot standard's views, plus the names older
+# plans used (kept so existing previews.toml files still load; they are read as their canonical view).
+CAMERAS = {name: (v.direction, not v.eye) for name, v in shots.VIEWS.items()}
+CAMERAS.update({old: CAMERAS[new] for old, new in shots.ALIASES.items()})
+# Old presets with no canonical twin keep their own angle, so existing plans render exactly as before.
+LEGACY_CAMERAS = {"3q_front_high": ((-0.5, 0.6, 0.9), False)}
+CAMERAS.update(LEGACY_CAMERAS)
 STATES = {   # name -> (pipeline.states shot it draws, the kind of extra parameters it takes)
     "intact": ("done", None), "construction": (None, "stage"), "done_damaged": ("done_damaged", "zones"),
     "one_hit": ("one_hit", "zones"), "battered": ("battered", "zones"), "broken": ("broken", "zones"),
@@ -155,7 +158,8 @@ def _shot(raw: Mapping, defaults: Mapping, set_blocks: tuple[str, ...], where: s
     cam = v.get("camera", "3q_front")
     if isinstance(cam, str):
         if cam not in CAMERAS:
-            raise PlanError(f"{where}: unknown camera {cam!r} (presets: {', '.join(CAMERAS)}).")
+            raise PlanError(f"{where}: unknown camera {cam!r} (presets: {', '.join(shots.VIEWS)}).")
+        cam = cam if cam in LEGACY_CAMERAS else shots.canonical(cam)
     elif isinstance(cam, Mapping):
         extra = sorted(set(cam) - {"position", "target", "lens", "ortho"})
         if extra or "position" not in cam:
