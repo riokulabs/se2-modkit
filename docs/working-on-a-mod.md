@@ -24,6 +24,15 @@ LOD, paint, lighting, resolution; format in `src/se2modkit/preview/plan.py`) fro
 without a window, into the mod's git-ignored `Source/Model/preview/<set>/`. `se2mod sheet` and `se2mod pair` lay
 images out side by side.
 
+`se2mod look SOURCE --block B [--set neighbors] [--views look|concept|v1,v2] [--before FOLDER] [--close PART]`
+renders a block's look set straight from its working file (`.blend`, `.glb`, `.gltf` or `.fbx`; read, never written)
+in the look-dev scene (`src/se2modkit/preview/lookdev.py`): mounted on a section of vanilla armor by `--mount-face`,
+beside the mod's `previews.toml` `[lookdev] neighbors` and a scale figure, from in-game eye views. It goes through the
+job queue as a medium job, waits, then writes `sheet.png` and `report.json` (time, triangles, exposure, unmapped
+materials) and lists anything that keeps the set from being shown. Material names that are not Keen slots map
+through `[lookdev.materials]`; anything still unmapped renders magenta. No LODs, fracture or export: those come with
+`se2mod build-models` once the look is approved.
+
 Every render path follows one shot standard (`src/se2modkit/preview/shots.py`): eleven view names (`front`, `back`,
 `left`, `right`, `top`, `bottom`, `3q_front`, `3q_back`, `3q_low`, `mount`, `inside`; older names such as `3q_rear`
 still load), files named `<block>_<stage>_r<N>_<view>[_<extra>]`, a `<stem>.cam.json` beside each render so a later
