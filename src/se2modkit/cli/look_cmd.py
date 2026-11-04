@@ -6,6 +6,7 @@ import argparse
 import inspect
 import json
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -106,8 +107,8 @@ def cmd_look(args: argparse.Namespace, env: SE2Env) -> int:
     name = f"look {args.block} {args.stage} r{rnd} ({args.set_name})"
     priority = _has_priority_lane()
     if args.print_only:
-        print("se2mod " + shlex.join(look.queue_argv(job_file, argv, name=name, priority=priority,
-                                                     timeout=LOOK_TIMEOUT)))
+        qargv = look.queue_argv(job_file, argv, name=name, priority=priority, timeout=LOOK_TIMEOUT)
+        print("se2mod " + (subprocess.list2cmdline(qargv) if env.platform.startswith("win") else shlex.join(qargv)))
         return 0
     store = Q.Store(env.cache_dir / "queue")
     extra = {"priority": True} if priority else {}

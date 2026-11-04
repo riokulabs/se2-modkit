@@ -1,5 +1,6 @@
 """`se2mod look`: the command around `preview.look` (the render itself is the Blender test's job)."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -31,7 +32,7 @@ def test_print_only_writes_the_job_and_the_queue_command(tmp_path, capsys):
     assert "{gpu}" in out
     job = json.loads((tmp_path / "look" / "XX_Drive" / "r2" / "job.json").read_text())
     assert job["round"] == 2 and job["views"] == ["3q_front", "top"] and job["set"] == "neighbors"
-    assert job["out"].endswith("look/XX_Drive/r2")
+    assert Path(job["out"]).parts[-3:] == ("look", "XX_Drive", "r2")
 
 
 def test_outside_a_mod_needs_out(tmp_path, capsys):
