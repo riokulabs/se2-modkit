@@ -29,7 +29,10 @@ renders a block's look set straight from its working file (`.blend`, `.glb`, `.g
 in the look-dev scene (`src/se2modkit/preview/lookdev.py`): mounted on a section of vanilla armor by `--mount-face`,
 beside the mod's `previews.toml` `[lookdev] neighbors` and a scale figure, from in-game eye views. It goes through the
 job queue as a medium job, waits, then writes `sheet.png` and `report.json` (time, triangles, exposure, unmapped
-materials) and lists anything that keeps the set from being shown. Material names that are not Keen slots map
+materials) and lists anything that keeps the set from being shown, including the geometry checks
+(`src/se2modkit/pipeline/geocheck.py`, written to `geocheck.json`: parts that don't reach the mount, pins off their
+lug, coplanar faces, parts passing clean through others, box-projected UVs on curved parts, cell groups, and the
+triangle budget given with `--tris-budget`). `--no-check` skips them for a quick warp test. Material names that are not Keen slots map
 through `[lookdev.materials]`; anything still unmapped renders magenta. No LODs, fracture or export: those come with
 `se2mod build-models` once the look is approved.
 

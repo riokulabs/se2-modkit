@@ -82,3 +82,12 @@ def test_a_broken_project_is_not_taken_for_no_project(tmp_path, capsys):
     src.write_bytes(b"glTF")
     assert cli.main(["look", str(src), "--block", "X", "--out", str(tmp_path / "look"), "--print-only"]) == 1
     assert "not in a mod project" not in capsys.readouterr().err
+
+
+def test_budget_and_no_check_reach_the_job(tmp_path):
+    src = tmp_path / "drive.glb"
+    src.write_bytes(b"glTF")
+    assert cli.main(["look", str(src), "--block", "X", "--out", str(tmp_path / "look"), "--print-only",
+                     "--tris-budget", "29000", "--no-check"]) == 0
+    job = json.loads((tmp_path / "look" / "X" / "r1" / "job.json").read_text())
+    assert job["tris_budget"] == 29000 and job["geocheck"] is False

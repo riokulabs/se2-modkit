@@ -169,6 +169,10 @@ def run(job: dict) -> dict:
             _shoot(sc.shot, name, tuple(pc + d * dist), tuple(pc), lens, None, out)
             close[name] = {"overview": f"{overview}.png", "rect": _pixel_rect(sc.shot.sc, cams["3q_front"], ppts)}
         (out / "close.json").write_text(json.dumps(close, indent=1) + "\n", encoding="utf-8")
+    if job.get("geocheck", True):
+        from se2modkit.pipeline import geocheck as GC
+        from se2modkit.preview.geocheck_blend import parts_from_objects
+        GC.run(parts_from_objects(objs, place), tris_budget=job.get("tris_budget")).write(out / "geocheck.json")
     report = {"source": job["source"], "set": job["set"], "views": job["views"], "seconds": 0.0,
               "unmapped_materials": unmapped, "tris": _tris(objs), "half_extents": list(half)}
     report["seconds"] = round(time.monotonic() - t0, 1)

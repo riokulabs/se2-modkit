@@ -36,6 +36,8 @@ def _args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--close", action="append", default=[], metavar="PART", help="a close-up of this part (repeatable)")
     p.add_argument("--material", action="append", default=[], metavar="NAME=SLOT",
                    help="map a working-file material to a Keen slot, on top of [lookdev.materials] (repeatable)")
+    p.add_argument("--tris-budget", type=int, metavar="N", help="fail the set over N triangles (the kit's budget)")
+    p.add_argument("--no-check", action="store_true", help="skip the geometry checks (a quick warp test)")
     p.add_argument("--full", action="store_true", help="full resolution and samples (default: fast)")
     p.add_argument("--no-wait", action="store_true", help="queue it and return (the set is checked only when waited for)")
     p.add_argument("--print-only", action="store_true", help="write the job and print the queue command; queue nothing")
@@ -93,7 +95,8 @@ def cmd_look(args: argparse.Namespace, env: SE2Env) -> int:
                              collection=args.collection, mount_face=args.mount_face, grid=args.grid,
                              neighbors=ld.neighbors, materials=materials,
                              armor_dir=armor if armor and armor.is_dir() else None, before=args.before,
-                             close=args.close, fast=not args.full)
+                             close=args.close, fast=not args.full, geocheck=not args.no_check,
+                             tris_budget=args.tris_budget)
     except (PreviewError, PL.PlanError, ProjectError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
