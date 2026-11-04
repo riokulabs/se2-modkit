@@ -198,3 +198,17 @@ def test_pin_axis_is_inferred_without_tags():
     report = GC.run([lug, square])
     assert not [f for f in report.failures if f["check"] == "pin_axis"]
     assert any(f["check"] == "pin_axis" and "se2_point" in f["detail"] for f in report.warnings)
+
+
+def test_untagged_clevis_and_stubby_pin_warn_instead_of_failing():
+    cheeks = [box("clevis_1", (-0.07, -0.1, -0.1), (-0.06, 0.1, 0.1)), box("clevis_1b", (0.06, -0.1, -0.1), (0.07, 0.1, 0.1))]
+    clevis = GC.Part("clevis_1", np.vstack([c.verts for c in cheeks]),
+                     np.vstack([cheeks[0].tris, cheeks[1].tris + len(cheeks[0].verts)]))
+    pin = cyl("pin_1", (-0.09, 0, 0), (0.09, 0, 0), 0.02)              # square in the clevis, nothing tagged
+    report = GC.run([clevis, pin])
+    assert not [f for f in report.failures if f["check"] == "pin_axis"]
+    assert any(f["check"] == "pin_axis" and "se2_axis" in f["detail"] for f in report.warnings)
+    lug = box("lug_eye", (-0.05, -0.1, -0.2), (0.05, 0.1, 0.1))
+    stubby = cyl("pin_short", (-0.015, 0, 0), (0.015, 0, 0), 0.04)     # shorter than it is wide
+    report = GC.run([lug, stubby])
+    assert not [f for f in report.failures if f["check"] == "pin_axis"]

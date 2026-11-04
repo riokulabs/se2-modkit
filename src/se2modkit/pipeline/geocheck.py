@@ -226,11 +226,16 @@ def _pin_axis(parts, report):
         pp = np.asarray(pin.point, float) if pin.point is not None else pin.verts.mean(0)
         for lug in partners:
             why = []
-            la = _unit(lug.axis) if lug.axis is not None else _principal(lug.verts, longest=False)
-            ang = math.degrees(math.acos(min(1.0, abs(float(pa @ la)))))
-            if ang > PIN_ANGLE:
-                why.append(f"{ang:.1f} degrees off the {lug.role}'s axis")
-            if lug.point is not None:
+            la = (_unit(lug.axis) if lug.axis is not None
+                  else _principal(lug.verts, longest=False) if lug.role == "lug" else None)
+            if pa is None or la is None:
+                report.add(False, "pin_axis", [pin.name, lug.name],
+                           "the axis can't be read from the shape (a clevis, or a short pin): tag se2_axis to check it")
+            else:
+                ang = math.degrees(math.acos(min(1.0, abs(float(pa @ la)))))
+                if ang > PIN_ANGLE:
+                    why.append(f"{ang:.1f} degrees off the {lug.role}'s axis")
+            if lug.point is not None and pa is not None:
                 off = np.linalg.norm(np.cross(np.asarray(lug.point, float) - pp, pa))
                 if off > PIN_OFFSET:
                     why.append(f"{off * 1000:.1f} mm off the {lug.role}'s eye")
@@ -241,10 +246,13 @@ def _pin_axis(parts, report):
                 report.add(True, "pin_axis", [pin.name, lug.name], "; ".join(why))
 
 
-def _principal(verts: np.ndarray, *, longest: bool) -> np.ndarray:
-    """A part's longest (a pin) or thinnest (a lug plate) direction, from its vertices' spread."""
+def _principal(verts: np.ndarray, *, longest: bool) -> np.ndarray | None:
+    """A part's longest (a pin) or thinnest (a lug plate) direction from its vertices' spread, or None when the shape
+    doesn't say clearly (a pin no longer than it is wide, a lug no thinner than it is wide)."""
     w, v = np.linalg.eigh(np.cov((verts - verts.mean(0)).T))
-    return v[:, -1 if longest else 0]
+    if longest:
+        return v[:, 2] if w[2] > 2.0 * w[1] else None
+    return v[:, 0] if w[0] < 0.5 * w[1] else None
 
 
 def _coplanar(parts, report):
