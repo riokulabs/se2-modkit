@@ -129,3 +129,11 @@ several submitters and the runner can work at once. Finished jobs are deleted af
 
 This queue is the first step toward rendering across several GPUs at once
 ([#6](https://github.com/riokulabs/se2-modkit/issues/6)).
+
+## Leasing a shared file
+
+When two people or sessions both edit one file, such as a shared `.blend`, `se2mod lock take <file>` leases it to you
+for 4 hours (`--ttl 30m`, `--owner NAME`; the owner defaults to `$SE2_SESSION`, then your user name). Taking a file
+someone else holds exits 1 and names them. `se2mod lock release <file>` drops your lease, and `se2mod lock list`
+shows every lease still in force. Leases are advisory: they don't block a save, so take one before you edit and
+release it when you're done.

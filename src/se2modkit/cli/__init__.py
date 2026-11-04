@@ -48,6 +48,7 @@ def _load_commands() -> None:
         facts_cmd,
         gpu_cmd,
         kit_cmd,
+        lock_cmd,
         models_cmd,
         mods_cmd,
         mount_cmd,
