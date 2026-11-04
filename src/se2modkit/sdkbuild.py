@@ -281,6 +281,19 @@ def _restore_pruned(mod: Path, held: Path) -> int:
 # --- build ------------------------------------------------------------------------------------------------------
 
 
+def _game_refusal(assume_game_closed: bool) -> int | None:
+    """EXIT_GAME_RUNNING (with the reason printed) when the game is or may be running, else None."""
+    if not assume_game_closed and not procs.listing_available():
+        print("Cannot tell whether Space Engineers 2 is running (the process list is unavailable); close it and "
+              "pass --assume-game-closed to build anyway.", file=sys.stderr)
+        return EXIT_GAME_RUNNING
+    if procs.game_running():
+        print("Space Engineers 2 is running; close it before building (the build and the game share the mod files).",
+              file=sys.stderr)
+        return EXIT_GAME_RUNNING
+    return None
+
+
 def sdk_lock_path(env: SE2Env) -> Path:
     """The lock every SDK build takes, shared by all sessions on this machine."""
     return env.cache_dir / SDK_LOCK_NAME
@@ -292,14 +305,9 @@ def build(env: SE2Env, mod: Path, *, dry_run: bool = False, verbose: bool = Fals
     """Build `mod` with the SDK builder; returns the exit code (0 ok, builder's code on failure, 3 stale outputs,
     4 refused because the game is running or the process list is unavailable, 5 another SDK build held the lock for
     `lock_timeout` seconds). Builds from every session share one lock (`sdk_lock_path`), so two never run at once."""
-    if not assume_game_closed and not procs.listing_available():
-        print("Cannot tell whether Space Engineers 2 is running (the process list is unavailable); close it and "
-              "pass --assume-game-closed to build anyway.", file=sys.stderr)
-        return EXIT_GAME_RUNNING
-    if procs.game_running():
-        print("Space Engineers 2 is running; close it before building (the build and the game share the mod files).",
-              file=sys.stderr)
-        return EXIT_GAME_RUNNING
+    refused = _game_refusal(assume_game_closed)
+    if refused is not None:
+        return refused
     mod = Path(mod)
     require(env, "sdk_editor", "game_dir", *(("proton", "prefix") if _linux(env) else ()))
     project = project_file(mod)
@@ -317,6 +325,10 @@ def build(env: SE2Env, mod: Path, *, dry_run: bool = False, verbose: bool = Fals
             print(f"another SDK build still holds {lock.path} after {lock_timeout:g} s; try again when it finishes.",
                   file=sys.stderr)
             return EXIT_LOCKED
+        refused = _game_refusal(assume_game_closed)  # the game may have started while we waited
+        if refused is not None:
+            lock.release()
+            return refused
     try:
         return _build_unlocked(env, mod, project, argv, cwd, run_env, dry_run=dry_run, run=run)
     finally:

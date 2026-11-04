@@ -458,3 +458,25 @@ def test_build_takes_and_releases_the_lock(tmp_path):
     after = FileLock(sdkbuild.sdk_lock_path(env))
     assert after.acquire(blocking=False)
     after.release()
+
+
+def test_build_rechecks_the_game_after_waiting_for_the_lock(tmp_path, monkeypatch, capsys):
+    import threading
+    from se2modkit.jobqueue import FileLock
+    env, d = _buildable(tmp_path)
+    state = {"running": False}
+    monkeypatch.setattr(procs, "game_running", lambda **_: state["running"])
+    held = FileLock(sdkbuild.sdk_lock_path(env))
+    assert held.acquire(blocking=False)
+
+    def game_starts_then_build_finishes():
+        state["running"] = True     # the player starts the game while our build waits
+        held.release()
+
+    threading.Timer(0.3, game_starts_then_build_finishes).start()
+    run = FakeRun()
+    assert sdkbuild.build(env, d, run=run, lock_timeout=5) == sdkbuild.EXIT_GAME_RUNNING
+    assert run.calls == []
+    after = FileLock(sdkbuild.sdk_lock_path(env))
+    assert after.acquire(blocking=False)   # the lock is not left held
+    after.release()
