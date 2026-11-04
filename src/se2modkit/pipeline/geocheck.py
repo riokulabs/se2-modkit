@@ -239,7 +239,7 @@ def _pin_axis(parts, report):
                 off = np.linalg.norm(np.cross(np.asarray(lug.point, float) - pp, pa))
                 if off > PIN_OFFSET:
                     why.append(f"{off * 1000:.1f} mm off the {lug.role}'s eye")
-            else:
+            elif lug.point is None:
                 report.add(False, "pin_axis", [pin.name, lug.name],
                            f"the {lug.role}'s eye isn't tagged (se2_point), so the pin's offset wasn't checked")
             if why:
