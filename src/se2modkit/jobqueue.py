@@ -36,6 +36,7 @@ from .env import procs
 LOADS = {"heavy": 1.0, "medium": 0.5, "light": 0.25}
 HEAVY = LOADS["heavy"]
 KILL_GRACE = 10.0             # seconds between SIGTERM and SIGKILL when a job is cancelled or times out
+BLENDER_KILL_GRACE = 120.0    # the same for a live Blender, which saves its open file first; a big .blend takes a while
 CLEAR_GRACE = 10.0            # `clear` keeps jobs that finished this recently (a waiter may not have seen them yet)
 IDLE_EXIT = 600.0             # the runner exits after this long with nothing queued or running
 TICK = 0.5                    # runner poll interval, seconds
@@ -442,6 +443,12 @@ def runner_unit(root: Path) -> str:
     return "se2mod-queue-" + hashlib.sha1(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:8]
 
 
+def kill_grace(job: JobRecord) -> float:
+    """Seconds between SIGTERM and SIGKILL for this job: a live Blender gets longer, because SIGTERM makes it save
+    the open file before it quits."""
+    return BLENDER_KILL_GRACE if job.kind == "blender" else KILL_GRACE
+
+
 def systemd_runner_command(root: Path, env: Mapping[str, str]) -> list[str] | None:
     """The systemd-run line that starts the runner as its own user service, or None without a systemd user manager.
 
@@ -658,7 +665,7 @@ class Runner:
 
     def _stop(self, job: JobRecord, proc: subprocess.Popen, why: str, now: float) -> None:
         job.stopping = why
-        self.kill_at[job.id] = now + KILL_GRACE
+        self.kill_at[job.id] = now + kill_grace(job)
         procgroup.signal_group(proc, "terminate")
         self.store.save(job)
 
@@ -701,8 +708,8 @@ class Runner:
         """Stop every job this runner started (the runner itself is being stopped)."""
         with self.store.lock():
             for job_id, proc in list(self.procs.items()):
-                procgroup.stop(proc, KILL_GRACE)
                 job = self.store.load(job_id)
+                procgroup.stop(proc, kill_grace(job) if job is not None else KILL_GRACE)
                 if job is not None and not job.final:
                     job.stopping = job.stopping or "cancel"
                     self._finish(job, proc)

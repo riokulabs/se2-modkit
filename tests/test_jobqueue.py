@@ -317,6 +317,23 @@ def test_a_job_that_ignores_sigterm_is_killed_after_the_grace(runner, monkeypatc
     assert runner.store.load(job.id).exit == 137
 
 
+def test_a_live_blender_gets_longer_to_save_before_it_is_killed(tmp_path):
+    store = Q.Store(tmp_path)
+    plain = store.submit(["echo"], environ={})
+    live = store.submit(["blender"], environ={}, kind="blender")
+    assert Q.kill_grace(plain) == Q.KILL_GRACE
+    assert Q.kill_grace(live) == Q.BLENDER_KILL_GRACE > Q.KILL_GRACE
+
+
+@posix
+def test_cancel_gives_a_live_blender_its_longer_grace(runner):
+    code = "import time\nprint('ready', flush=True)\ntime.sleep(120)"
+    job = runner.store.submit(_py(code), environ={}, kind="blender")
+    _spin(runner, lambda: "ready" in _text(runner.store.log_path(job.id)))
+    runner.store.cancel([job.id])
+    runner.tick()
+    assert runner.kill_at[job.id] - runner.clock() > Q.KILL_GRACE
+
 @posix
 def test_job_timeout(runner):
     job = runner.store.submit(_py("import time; time.sleep(120)"), timeout=0.5, environ={})
