@@ -1301,3 +1301,37 @@ def test_a_shipped_model_asset_must_be_the_staged_one(released, capsys):
     from se2modkit import release as REL
     data = REL.read_stamp(REL.stamp_path(released.report, "ToyMod")) or {}
     assert _gate(released)[0] is not None
+
+
+def _per_block(tmp_path, monkeypatch, *argv):
+    from types import SimpleNamespace
+
+    from se2modkit import jobqueue as Q
+    monkeypatch.setattr(MC, "_mod", lambda env, sel: SimpleNamespace(name="XX_Mod"))
+    monkeypatch.setattr(Q, "ensure_runner", lambda store: None)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    rc = cli.main(["build-models", "XX_Mod", *argv])
+    return rc, Q.Store(tmp_path / "xdg" / "se2modkit" / "queue")
+
+
+def test_per_block_submits_one_job_per_block(tmp_path, monkeypatch, capsys):
+    rc, store = _per_block(tmp_path, monkeypatch, "XX_A", "XX_B", "--per-block", "--export")
+    assert rc == 0
+    jobs = store.queued()
+    assert len(jobs) == 2 and all(j.load == 1.0 for j in jobs)
+    for job, block in zip(jobs, ("XX_A", "XX_B")):
+        tail = job.argv[job.argv.index("build-models"):]
+        assert tail[:3] == ["build-models", "XX_Mod", block] and "--export" in tail and "--per-block" not in tail
+    assert str(jobs[0].id) in capsys.readouterr().out
+
+
+def test_per_block_names_jobs_export_mod_block(tmp_path, monkeypatch):
+    _, store = _per_block(tmp_path, monkeypatch, "XX_A", "--per-block")
+    assert [j.name for j in store.queued()] == ["export:XX_Mod:XX_A"]
+
+
+def test_per_block_needs_plain_block_names(tmp_path, monkeypatch, capsys):
+    for argv in (["--per-block"], ["XX_*", "--per-block"], ["all", "--per-block"], ["XX_A", "--per-block", "--release"]):
+        rc, store = _per_block(tmp_path, monkeypatch, *argv)
+        assert rc == 2 and store.queued() == []
+    assert "block names" in capsys.readouterr().err

@@ -564,3 +564,46 @@ def test_live_blender_session_jumps_the_queue_and_is_one_at_a_time(tmp_path):
     store.cancel([job.id])
     assert store.live_blender() is None
     assert "--python" in Q.blender_session_argv("blender") and len(Q.blender_session_argv("blender")) == 8
+
+
+# --- priority lane ---------------------------------------------------------------------------------------------------
+
+def test_priority_job_runs_before_older_waiting_jobs(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    a, b = store.submit(["true"], name="a", environ={}), store.submit(["true"], name="b", environ={})
+    p = store.submit(["true"], name="look", load=0.5, priority=True, environ={})
+    assert p.priority and [j.id for j in store.queued()] == [p.id, a.id, b.id]
+    q = store.submit(["true"], name="look2", load=0.5, priority=True, environ={})
+    assert [j.id for j in store.queued()][:2] == [p.id, q.id]                   # first come, first served in the lane
+
+
+def test_priority_never_starts_beside_a_running_heavy():
+    running = [_job(1, Q.HEAVY, state="running", gpu=0)]
+    look = _job(2, 0.5, priority=True)
+    assert _plan([look], running, gpus=[Gpu(0)]) == []
+    assert _ids(_plan([look], [], gpus=[Gpu(0)])) == [2]
+
+
+def test_move_still_orders_within_a_lane(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    a, b = store.submit(["true"], name="a", environ={}), store.submit(["true"], name="b", environ={})
+    p = store.submit(["true"], name="look", priority=True, environ={})
+    assert [j.id for j in store.move(b.id, 0)] == [p.id, b.id, a.id]          # the order that will really run
+    assert [j.id for j in store.queued()] == [p.id, b.id, a.id]                 # moved first among the plain jobs
+
+
+def test_live_blender_goes_first_even_past_the_priority_lane(tmp_path):
+    store = Q.Store(tmp_path / "q")
+    look = store.submit(["true"], name="look", priority=True, environ={})
+    live = store.submit_blender("/opt/blender/blender", environ={})
+    assert [j.id for j in store.queued()] == [live.id, look.id]
+    assert live.env.get("SE2_QUEUE_ROOT") == str(store.root)
+
+
+def test_cli_submit_priority(tmp_path, capsys, monkeypatch):
+    from se2modkit import cli
+    monkeypatch.setattr(Q, "ensure_runner", lambda store: None)                # no real runner in a test
+    qdir = tmp_path / "q"
+    assert cli.main(["queue", "--queue-dir", str(qdir), "submit", "--priority", "--", "true"]) == 0
+    job = Q.Store(qdir).load(int(capsys.readouterr().out.strip()))
+    assert job.priority is True
