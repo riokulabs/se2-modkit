@@ -46,8 +46,9 @@ def _core(sx):
 
 
 def test_inner_box_shrinks_and_vanishes_on_thin_blocks():
-    assert IN.inner_box((-0.5, -0.6, -1.25), (0.5, 0.6, 1.25)) == pytest.approx(
-        ([-0.4, -0.5, -1.15], [0.4, 0.5, 1.15]))
+    lo, hi = IN.inner_box((-0.5, -0.6, -1.25), (0.5, 0.6, 1.25))
+    assert list(lo) == pytest.approx([-0.4, -0.5, -1.15])   # approx doesn't take nested sequences (pytest 9.2)
+    assert list(hi) == pytest.approx([0.4, 0.5, 1.15])
     assert IN.inner_box((-0.5, -0.5, -0.02), (0.5, 0.5, 0.02)) is None          # a tile: no interior
 
 
