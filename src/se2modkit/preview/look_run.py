@@ -60,9 +60,25 @@ def _load(job: dict) -> bpy.types.Collection:
     return holder
 
 
-def _materials(holder, table: dict) -> list[str]:
+def _render_meshes(coll) -> list:
+    """The meshes a render of the collection shows, the same set a mod build exports: collections and objects hidden
+    from render, and boolean cutters (`cutter*`), stay out of the bounds, the counts and the checks."""
+    out = []
+
+    def visit(c):
+        if c.hide_render:
+            return
+        out.extend(o for o in c.objects
+                   if o.type == "MESH" and not o.hide_render and not o.name.startswith("cutter"))
+        for child in c.children:
+            visit(child)
+    visit(coll)
+    return list(dict.fromkeys(out))
+
+
+def _materials(objs, table: dict) -> list[str]:
     unmapped = []
-    for o in holder.all_objects:
+    for o in objs:
         if o.type != "MESH":
             continue
         for s in o.material_slots:
@@ -115,10 +131,10 @@ def run(job: dict) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     base.configure(out, fast=job["fast"])
     holder = _load(job)
-    objs = [o for o in holder.all_objects if o.type == "MESH"]
+    objs = _render_meshes(holder)
     if not objs:
         raise SystemExit(f"ERROR: nothing to render in {Path(job['source']).name}")
-    unmapped = _materials(holder, job["materials"])
+    unmapped = _materials(objs, job["materials"])
     bpy.context.view_layer.update()
     rot = Matrix(lookdev.mount_rotation(job["mount_face"])).to_4x4()
     pts = _points(objs, rot)

@@ -140,3 +140,13 @@ def test_job_carries_the_geometry_check_settings(tmp_path):
     job = _job(tmp_path, tris_budget=29000)
     assert job["geocheck"] is True and job["tris_budget"] == 29000
     assert _job(tmp_path, geocheck=False)["geocheck"] is False
+
+
+def test_finish_survives_a_torn_geocheck(tmp_path):
+    out = tmp_path / "r1"
+    for v in shots.REQUIRED["look"]:
+        _png(out / f"XX_Drive_look_r1_{v}.png")
+    (out / "geocheck.json").write_text('{"ok": fal')
+    report = look.finish(out, block="XX_Drive", stage="look", rnd=1)
+    assert report["geocheck"] == {"ok": False, "unreadable": True}
+    assert any("geocheck.json unreadable" in p for p in report["problems"])

@@ -177,3 +177,20 @@ def test_saved_camera_keeps_the_ortho_scale(tmp_path):
     shots.save_camera(b, m, 50.0, ortho=7.0)
     assert shots.load_camera(a)["ortho"] == 6.0
     assert shots.check_set(tmp_path, "A", "fix", 1) == ["before/after cameras differ: A_fix_r1_front"]
+
+
+def test_check_set_reports_geometry_failures(tmp_path):
+    _set(tmp_path, "A", "concept", 1, shots.REQUIRED["concept"])
+    (tmp_path / "geocheck.json").write_text(json.dumps({
+        "ok": False, "failures": [{"check": "poke_through", "parts": ["rod", "plate"], "detail": "passes clean through"}],
+        "warnings": [{"check": "untagged", "parts": ["a"], "detail": "1 part(s) have no role"}]}))
+    assert shots.check_set(tmp_path, "A", "concept", 1) == ["geometry: poke_through (rod, plate): passes clean through"]
+
+
+def test_a_torn_geocheck_file_is_a_problem_not_a_crash(tmp_path):
+    _set(tmp_path, "A", "concept", 1, shots.REQUIRED["concept"])
+    (tmp_path / "geocheck.json").write_text('{"ok": false, "failures": [{"check": "load_')
+    problems = shots.check_set(tmp_path, "A", "concept", 1)
+    assert len(problems) == 1 and problems[0].startswith("geometry: geocheck.json unreadable")
+    (tmp_path / "geocheck.json").write_text('{"failures": [{"parts": []}]}')
+    assert shots.check_set(tmp_path, "A", "concept", 1)[0].startswith("geometry: geocheck.json unreadable")

@@ -88,7 +88,9 @@ class Report:
 
     def write(self, path: Path) -> Path:
         path = Path(path)
-        path.write_text(json.dumps(self.to_dict(), indent=1) + "\n", encoding="utf-8")
+        tmp = path.with_suffix(".json.tmp")      # whole or not at all: a reader never sees half a report
+        tmp.write_text(json.dumps(self.to_dict(), indent=1) + "\n", encoding="utf-8")
+        tmp.replace(path)
         return path
 
 

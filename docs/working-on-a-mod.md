@@ -42,7 +42,7 @@ still load), files named `<block>_<stage>_r<N>_<view>[_<extra>]`, a `<stem>.cam.
 round reuses the camera, a locator thumbnail on every close-up (`_close-<part>`), and same-camera `_before` / `_after`
 pairs. `se2mod shots check FOLDER --block B --stage look|concept|fix --round N [--interior]` exits 1 and lists what
 keeps a set from being shown: a missing view, a failed exposure check (too dark, too bright, blown or crushed), a
-close-up without a locator, or an `_after` without a matching `_before`.
+close-up without a locator, an `_after` without a matching `_before`, or a failure in the set's `geocheck.json`.
 
 ## Tests
 
