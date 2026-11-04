@@ -47,7 +47,7 @@ def test_build_passes_flags(run, tmp_path, monkeypatch):
     d = _mod(tmp_path)
     seen = {}
 
-    def fake_build(env, mod, *, dry_run=False, verbose=False, assume_game_closed=False):
+    def fake_build(env, mod, *, dry_run=False, verbose=False, assume_game_closed=False, lock_timeout=None):
         seen.update(mod=mod, dry_run=dry_run, verbose=verbose)
         return 0
 
@@ -66,7 +66,7 @@ def test_unreadable_def_is_one_sentence(run, tmp_path, monkeypatch):
     d = _mod(tmp_path)
     monkeypatch.setattr(procs, "game_running", lambda **_: False)
 
-    def boom(env, mod, *, dry_run=False, verbose=False, assume_game_closed=False):
+    def boom(env, mod, *, dry_run=False, verbose=False, assume_game_closed=False, lock_timeout=None):
         raise sdkbuild.ModError("Cannot read Assets/x.def as JSON (bad); fix it, then build again.")
 
     monkeypatch.setattr(sdkbuild, "build", boom)
