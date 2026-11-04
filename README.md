@@ -3,7 +3,7 @@
 Shared build tooling for Space Engineers 2 mods: environment discovery, a Blender-to-game model pipeline, the Mod SDK
 build, validation, tests, a Steam Workshop publisher and diagnostics. It runs on Linux (native or Proton) and Windows.
 
-Status: early. Tested against game 4.0.0.3155 (`src/se2modkit/compat.toml`); an untested game version gives a
+Status: early. Tested against game 4.0.0.3165 (`src/se2modkit/compat.toml`); an untested game version gives a
 warning and a pointer to `se2mod deps check`.
 
 No game files are part of this repository. Modkit reads the game and the Mod SDK from your own installation.

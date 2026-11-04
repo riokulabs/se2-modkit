@@ -12,4 +12,4 @@ def test_import_has_no_heavy_deps():
 
 def test_version_string():
     assert se2modkit.__version__ == "0.1.0.dev0"
-    assert se2modkit.SUPPORTED_GAME == "4.0.0.3155"
+    assert se2modkit.SUPPORTED_GAME == "4.0.0.3165"
