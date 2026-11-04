@@ -180,3 +180,28 @@ def preview_shots(args: argparse.Namespace, env: SE2Env) -> int:
         return 1
     print(f"{len(written)} image(s) in {out}")
     return 0
+
+
+def _shots_args(p: argparse.ArgumentParser) -> None:
+    sub = p.add_subparsers(dest="shots_cmd", metavar="SUBCOMMAND", required=True)
+    c = sub.add_parser("check", help="is this set ready to show? missing views, exposure, locators, before/after")
+    c.add_argument("folder", type=Path)
+    c.add_argument("--block", required=True)
+    c.add_argument("--stage", required=True, help="look, concept or fix (sets which views are required)")
+    c.add_argument("--round", type=int, required=True, dest="rnd", metavar="N")
+    c.add_argument("--interior", action="store_true", help="the block has an inside, so the set needs `inside` too")
+
+
+@register("shots", "The shot standard: shots check FOLDER --block B --stage S --round N", add_args=_shots_args,
+          check_game_version=False)
+def cmd_shots(args: argparse.Namespace, env: SE2Env) -> int:
+    from ..preview import shots
+    try:
+        problems = shots.check_set(args.folder, args.block, args.stage, args.rnd, interior=args.interior)
+    except preview.PreviewError as e:
+        return _fail(e)
+    for line in problems:
+        print(line)
+    if not problems:
+        print(f"{args.block} {args.stage} r{args.rnd}: ready")
+    return 1 if problems else 0

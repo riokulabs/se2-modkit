@@ -24,6 +24,14 @@ LOD, paint, lighting, resolution; format in `src/se2modkit/preview/plan.py`) fro
 without a window, into the mod's git-ignored `Source/Model/preview/<set>/`. `se2mod sheet` and `se2mod pair` lay
 images out side by side.
 
+Every render path follows one shot standard (`src/se2modkit/preview/shots.py`): eleven view names (`front`, `back`,
+`left`, `right`, `top`, `bottom`, `3q_front`, `3q_back`, `3q_low`, `mount`, `inside`; older names such as `3q_rear`
+still load), files named `<block>_<stage>_r<N>_<view>[_<extra>]`, a `<stem>.cam.json` beside each render so a later
+round reuses the camera, a locator thumbnail on every close-up (`_close-<part>`), and same-camera `_before` / `_after`
+pairs. `se2mod shots check FOLDER --block B --stage look|concept|fix --round N [--interior]` exits 1 and lists what
+keeps a set from being shown: a missing view, a failed exposure check (too dark, too bright, blown or crushed), a
+close-up without a locator, or an `_after` without a matching `_before`.
+
 ## Tests
 
 se2-modkit installs a pytest plugin. It registers the markers `build`, `sdkbuild` (opt-in:
