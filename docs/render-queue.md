@@ -19,7 +19,7 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 | `se2mod queue wait ID [--timeout S]` | Block until the job ends; exit with its exit code (124 on timeout, 125 if cancelled). Default timeout 3600 s |
 | `se2mod queue status` (or `list`) | One line per job: ID, name, load, state, GPU, elapsed time, exit code; a running job also shows its last log line. `--all` shows every kept job |
 | `se2mod queue log ID [-f]` | Print a job's output; `-f` keeps printing until the job ends |
-| `se2mod queue cancel ID... \| --all` | Cancel jobs: a queued job is dropped, a running one gets SIGTERM on its process group and SIGKILL 10 s later |
+| `se2mod queue cancel ID... \| --all` | Cancel jobs: a queued job is dropped, a running one gets SIGTERM on its process group and SIGKILL 10 s later (two minutes for a live Blender) |
 | `se2mod queue clear` | Delete finished jobs and their logs; jobs that ended in the last 10 s stay, so a tool waiting on one still sees it |
 | `se2mod queue pause` / `resume` | Pause the queue (running jobs carry on, nothing new starts) or resume it |
 | `se2mod queue move ID --top \| --bottom \| --up \| --down \| --to N` | Move a waiting job within the queue (`--to 1` is next to start) |

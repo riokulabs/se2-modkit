@@ -86,7 +86,8 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     lg.add_argument("job", type=_job_id, metavar="ID")
     lg.add_argument("-f", "--follow", action="store_true", help="keep printing until the job ends")
 
-    c = sub.add_parser("cancel", help="cancel jobs: SIGTERM to the job's process group, SIGKILL 10 s later")
+    c = sub.add_parser("cancel", help="cancel jobs: SIGTERM to the job's process group, SIGKILL 10 s later "
+                                      "(two minutes for a live Blender)")
     c.add_argument("jobs", type=_job_id, nargs="*", metavar="ID")
     c.add_argument("--all", action="store_true", help="cancel every queued and running job")
 
@@ -175,7 +176,7 @@ def _dispatch(args, env, store: Q.Store) -> int:
         changed = store.cancel(None if args.all else args.jobs)
         for job in changed:
             print(f"cancelled job {job.id} {job.name}" if job.final else
-                  f"stopping job {job.id} {job.name} (SIGTERM, then SIGKILL after {Q.KILL_GRACE:g}s)")
+                  f"stopping job {job.id} {job.name} (SIGTERM, then SIGKILL after {Q.kill_grace(job):g}s)")
         if not changed:
             print("nothing to cancel")
         return 0

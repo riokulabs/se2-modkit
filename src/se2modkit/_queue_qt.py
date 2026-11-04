@@ -273,7 +273,7 @@ class QueueWindow(QtWidgets.QMainWindow):
         if job.state == "running":
             answer = QtWidgets.QMessageBox.question(
                 self, "Cancel running job",
-                f"Stop job {job.id} {job.name}?\n\nIt gets SIGTERM, then SIGKILL after {Q.KILL_GRACE:g} s.")
+                f"Stop job {job.id} {job.name}?\n\nIt gets SIGTERM, then SIGKILL after {Q.kill_grace(job):g} s.")
             if answer != QtWidgets.QMessageBox.StandardButton.Yes:
                 return
         self.store.cancel([job.id])

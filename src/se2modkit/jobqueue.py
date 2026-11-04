@@ -463,7 +463,8 @@ def systemd_runner_command(root: Path, env: Mapping[str, str]) -> list[str] | No
     log = Path(root) / "runner.log"
     cmd = ["systemd-run", "--user", "--collect", "--quiet", f"--unit={runner_unit(root)}",
            f"--description=se2mod job queue runner ({root})", f"--working-directory={root}",
-           "-p", f"StandardOutput=append:{log}", "-p", f"StandardError=append:{log}"]
+           "-p", f"StandardOutput=append:{log}", "-p", f"StandardError=append:{log}",
+           "-p", f"TimeoutStopSec={BLENDER_KILL_GRACE + 30:g}"]     # stopping the unit lets a live Blender save
     for key, value in sorted(env.items()):
         if key in _UNIT_OWN_ENV or "\n" in value or "=" in key or not key:
             continue
