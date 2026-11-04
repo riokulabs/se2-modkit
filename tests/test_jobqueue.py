@@ -428,6 +428,7 @@ def test_runner_env_lets_a_fresh_interpreter_import_se2modkit(tmp_path):
     assert out.returncode == 0 and out.stdout.strip() == "ok", out.stderr
 
 
+@posix                                          # no systemd on Windows: the line is None there by design
 def test_runner_service_line_keeps_the_runner_out_of_the_callers_cgroup(tmp_path, monkeypatch):
     """With a systemd user manager the runner starts as its own user unit (one name per queue directory), logs to
     runner.log, and carries the submitter's environment except systemd's own per-unit variables."""
@@ -459,7 +460,12 @@ def test_spawn_runner_falls_back_to_a_detached_child(tmp_path, monkeypatch):
     started = []
     monkeypatch.setattr(Q.subprocess, "Popen", lambda argv, **kw: started.append((argv, kw)) or "proc")
     assert Q.spawn_runner(tmp_path) == "proc"
-    assert started[0][0] == Q.runner_command(tmp_path) and started[0][1].get("start_new_session")
+    argv, kw = started[0]
+    assert argv == Q.runner_command(tmp_path)
+    if os.name == "nt":
+        assert kw.get("creationflags", 0) & subprocess.DETACHED_PROCESS
+    else:
+        assert kw.get("start_new_session")
 
 
 def test_move_reorders_waiting_jobs(tmp_path):
