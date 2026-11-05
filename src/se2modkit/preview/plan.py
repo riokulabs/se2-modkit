@@ -12,7 +12,7 @@ The file sits in the mod folder (beside the .vrgproj) or in its model source (`S
     [[sets.review.shots]]
     name = "front"                  # file: <name>_<block>.png (or <name>.png for one block or `together`)
     camera = "3q_front"             # a preset (CAMERAS) or {position = [x, y, z], target = [x, y, z], lens = 50};
-                                    # positions in metres from the block's centre, +Y = front, Z up
+                                    # positions in meters from the block's center, +Y = front, Z up
     state = "intact"                # STATES; "construction" takes `stage` (0..1); damage states take optional
                                     # `zones = {Fracture_01 = "dead"}` (intact | damaged | dead per zone)
     lod = 0                         # intact only: which exported LOD
