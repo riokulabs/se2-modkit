@@ -219,3 +219,15 @@ def test_a_tagged_eye_is_not_called_untagged():
     stubby = cyl("pin_short", (-0.015, 0, 0), (0.015, 0, 0), 0.04)
     warnings = [f["detail"] for f in GC.run([lug, stubby]).warnings if f["check"] == "pin_axis"]
     assert warnings and not any("se2_point" in w for w in warnings)
+
+
+def test_box_uv_on_a_short_disc():
+    d = cyl("disc", (0, 0, 0), (0, 0, 0.05), 0.3)                 # its caps outweigh its rim
+    d.uvs = _box_projected(d)
+    assert _checks(GC.run([d]), "box_uv")[0]["parts"] == ["disc"]
+    P = d.verts[d.tris]
+    n = np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0])
+    cap = np.abs(n[:, 2]) > 0.99 * np.linalg.norm(n, axis=1)
+    d.uvs = np.array([[[q[0], q[1]] if c else [math.atan2(q[1], q[0]) / (2 * math.pi), q[2]] for q in tri]
+                      for tri, c in zip(P, cap)])                  # planar caps, unwrapped rim
+    assert not _checks(GC.run([d]), "box_uv")

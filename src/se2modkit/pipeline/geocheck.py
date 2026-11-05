@@ -9,7 +9,8 @@ the part's `se2_role` / `se2_axis` / `se2_point` / `se2_links` properties or, fa
                 and on its eye (within 2 mm, when the eye is tagged with se2_point)
   coplanar      two parts with faces in the same plane facing the same way (the game's depth test flickers there)
   poke_through  a part that passes clean through another part it is not linked to
-  box_uv        a curved part whose UVs are a box projection (stretched, seamy texture on round surfaces)
+  box_uv        a curved part (a tube, a short disc, a sphere) whose UVs are a box projection (stretched, seamy
+                texture on round surfaces)
   cell_groups   the occupied cells split into more than 100 boxes (the game crashes on removal past 255)
   tris          more triangles than the kit's budget
   untagged      parts with no role (a warning: they still count for the load path, as structure)
@@ -299,6 +300,22 @@ def _poke_through(parts, report):
                     break
 
 
+def _curved(nu: np.ndarray, area: np.ndarray) -> np.ndarray | None:
+    """Which faces make a part's curved surface (unit normals `nu`, weights `area`), or None when it isn't curved:
+    most of the whole surface faces away from the six axes (a sphere, a long tube), or most of the band of faces
+    around one axis does (a short disc or a ring, whose flat caps outweigh the rim). A few chamfers don't make a box
+    curved: they are a small share of the band they sit in."""
+    off_axis = np.abs(nu).max(1) < math.cos(math.radians(5))
+    if area[off_axis].sum() > 0.5 * area.sum():
+        return off_axis
+    for k in range(3):
+        band = np.abs(nu[:, k]) < math.sin(math.radians(5))
+        rim = band & off_axis
+        if rim.any() and area[rim].sum() > 0.5 * area[band].sum():
+            return rim
+    return None
+
+
 def _box_uv(parts, report):
     for p in parts:
         if p.uvs is None or len(p.tris) < 8:
@@ -308,14 +325,13 @@ def _box_uv(parts, report):
         n = np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0])
         ln = np.linalg.norm(n, axis=1)
         keep = ln > 1e-12
-        nu = n[keep] / ln[keep, None]
-        # curved: most of the surface faces away from the six axes (a few chamfers don't make a box curved)
-        off_axis = np.abs(nu).max(1) < math.cos(math.radians(5))
-        if ln[keep][off_axis].sum() <= 0.5 * ln[keep].sum():
+        nu, area = n[keep] / ln[keep, None], ln[keep]
+        curved = _curved(nu, area)
+        if curved is None:
             continue
-        k = np.argmax(np.abs(n[keep]), axis=1)
-        proj = np.array([[np.delete(c, kk) for c in tri] for tri, kk in zip(P[keep], k)]).reshape(-1, 2)
-        uv = np.asarray(p.uvs, float)[keep].reshape(-1, 2)
+        k = np.argmax(np.abs(nu[curved]), axis=1)
+        proj = np.array([[np.delete(c, kk) for c in tri] for tri, kk in zip(P[keep][curved], k)]).reshape(-1, 2)
+        uv = np.asarray(p.uvs, float)[keep][curved].reshape(-1, 2)
         resid = 0.0
         for ch in range(2):
             A = np.c_[proj[:, ch], np.ones(len(proj))]
