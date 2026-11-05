@@ -565,18 +565,20 @@ def max_fractures(size):
     return int(round(v))       # Python's round is round-half-to-even, as the game rounds here
 
 
-UNCAPPED_TRIS = 10 ** 9      # the per-LOD budget of a family whose `fracture_budget_x` is None
+UNCAPPED_TRIS = 10 ** 9      # the per-LOD budget of a family whose `fracture_budget_x` is None (LOD0: the row value)
 
 
 def fracture_budget(size, lod0_tris, n_lods, ratio=1.0):
     """Per LOD, the most triangles a fractured / damaged model of this block may have: Keen's fractured limit
     (x 1.83425) with 5 % headroom, and on LOD0 the row value that keeps Keen's LOD count (the count is keyed on the
     model's own LOD0 triangles: crossing row[bias] would ask for one more LOD). `ratio` (the family's
-    `fracture_budget_x`) scales the limit but not the LOD0 row; None lifts the cap on every LOD."""
+    `fracture_budget_x`) scales the limit but not the LOD0 row; None lifts the limit on every LOD, and LOD0 still keeps
+    the row value."""
     if ratio is None:
-        return [UNCAPPED_TRIS] * n_lods
-    frac = limits.model_limits(size, lod0_tris, fractured=True)
-    out = [int(frac["lods"][i]["max_tris"] * 0.95 * ratio) for i in range(n_lods)]
+        out = [UNCAPPED_TRIS] * n_lods
+    else:
+        frac = limits.model_limits(size, lod0_tris, fractured=True)
+        out = [int(frac["lods"][i]["max_tris"] * 0.95 * ratio) for i in range(n_lods)]
     r = lod_row(size, lod0_tris)
     if r is not None:
         out[0] = min(out[0], int(LOD_ROW_BAND[0] * r))

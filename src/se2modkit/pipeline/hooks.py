@@ -19,7 +19,8 @@ specs carry):
     damaged_tris_x    {"default": 1.2, family: ratio}      Damaged / Fractured triangle ratio cap (`tris_x`)
     fracture_budget_x {"default": 1.0, family: ratio|None} Fractured / Damaged triangle budget as a ratio of Keen's
                                                            limit with its headroom (`budget_x`): 1.5 allows half as
-                                                           many triangles again, None lifts the cap
+                                                           many triangles again, None lifts it (LOD0 still keeps
+                                                           the row value that holds Keen's LOD count)
     standins          {block name: (StandIn, ...)}         parked subparts baked into the Fractured / Damaged model
     min_share_exempt  {(family, zone id)}                  zones kept on their shaped hull under the minimum share
     core_parts        {family: (part names)}               the solid core of a broken zone

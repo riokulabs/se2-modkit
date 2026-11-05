@@ -147,7 +147,11 @@ def test_fracture_budget_ratio_and_uncapped(hooks):
     wide = FR.fracture_budget(size, 800, 3, 3.0)
     assert wide[0] == base[0] and wide[1:] == [2451, 165]       # the LOD0 row (Keen's LOD count) is not scaled
     assert FR.fracture_budget(size, 800, 3, 0.5)[1:] == [408, 27]
-    assert FR.fracture_budget(size, 800, 3, None) == [FR.UNCAPPED_TRIS] * 3
+    # None lifts Keen's limit, but LOD0 keeps the row value: a Damaged model densified past it would ask for one more
+    # LOD than its Fractured model
+    assert FR.fracture_budget(size, 800, 3, None) == [base[0]] + [FR.UNCAPPED_TRIS] * 2
+    r = FR.lod_row(size, 2000)
+    assert r is not None and FR.fracture_budget(size, 2000, 3, None)[0] == int(FR.LOD_ROW_BAND[0] * r)
     # the ratio comes from the family's hook entry, else the default
     hooks.fracture_budget_x.update({"box": None, "lid": 2.0})
     assert FR.fracture_budget_x(hooks, "box") is None and FR.fracture_budget_x(hooks, "lid") == 2.0
