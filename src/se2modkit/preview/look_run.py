@@ -25,7 +25,7 @@ __all__ = ["main", "run"]
 
 
 def _load(job: dict) -> bpy.types.Collection:
-    """The source's renderable objects in one excluded holder collection."""
+    """The source's renderable objects in one holder collection, kept in the working view layer so they evaluate."""
     src, kind, want = job["source"], job["kind"], job["collection"]
     holder = bpy.data.collections.new("look_subject")
     bpy.context.scene.collection.children.link(holder)
