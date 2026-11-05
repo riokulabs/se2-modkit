@@ -100,6 +100,9 @@ def cmd_look(args: argparse.Namespace, env: SE2Env) -> int:
     except (PreviewError, PL.PlanError, ProjectError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
+    if args.no_check and args.tris_budget is not None:
+        print("warning: --tris-budget is not checked with --no-check (the geometry checks are skipped).",
+              file=sys.stderr)
     out = Path(job["out"])
     out.mkdir(parents=True, exist_ok=True)
     job_file = out / "job.json"      # beside its set, so two mods' jobs never share a name
