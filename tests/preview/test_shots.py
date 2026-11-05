@@ -194,3 +194,21 @@ def test_a_torn_geocheck_file_is_a_problem_not_a_crash(tmp_path):
     assert len(problems) == 1 and problems[0].startswith("geometry: geocheck.json unreadable")
     (tmp_path / "geocheck.json").write_text('{"failures": [{"parts": []}]}')
     assert shots.check_set(tmp_path, "A", "concept", 1)[0].startswith("geometry: geocheck.json unreadable")
+
+
+def test_check_set_refuses_an_unknown_stage(tmp_path):
+    with pytest.raises(PreviewError, match="stage"):
+        shots.check_set(tmp_path, "A", "lok", 1)
+
+
+def test_old_view_names_in_file_names_are_read(tmp_path):
+    n = shots.parse_shot_name("A_look_r1_3q_rear")
+    assert (n.view, n.extra) == ("3q_back", "")
+    n = shots.parse_shot_name("A_look_r1_3q_front_low_close-gimbal")
+    assert (n.view, n.extra) == ("3q_low", "close-gimbal")
+    assert shots.parse_shot_name("A_look_r1_3q_front_high").view == "3q_front"
+    views = [v for v in shots.REQUIRED["concept"] if v != "3q_back"]
+    _set(tmp_path, "A", "concept", 1, views)
+    _png(tmp_path / "A_concept_r1_3q_rear.png", 10)              # an old name stands for its view, and is checked
+    assert shots.check_set(tmp_path, "A", "concept", 1) == [
+        "exposure: A_concept_r1_3q_rear: too dark (mean 0.04 < 0.18)"]

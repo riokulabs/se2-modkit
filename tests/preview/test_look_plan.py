@@ -150,3 +150,31 @@ def test_finish_survives_a_torn_geocheck(tmp_path):
     report = look.finish(out, block="XX_Drive", stage="look", rnd=1)
     assert report["geocheck"] == {"ok": False, "unreadable": True}
     assert any("geocheck.json unreadable" in p for p in report["problems"])
+
+
+def test_close_part_matches_by_name_or_base_name():
+    assert look.close_hits(["Nozzle.001", "Body", "NozzleRing"], "Nozzle") == ["Nozzle.001"]
+    assert look.close_hits(["Body"], "Body") == ["Body"]
+    assert look.close_hits(["Body"], "Nozle") == []
+
+
+def test_finish_lists_a_close_up_that_matched_nothing(tmp_path):
+    out = tmp_path / "r1"
+    _png(out / "XX_Drive_fix_r1_3q_front.png")
+    (out / "report.json").write_text(json.dumps({"close_missing": ["Nozle"]}))
+    report = look.finish(out, block="XX_Drive", stage="fix", rnd=1)
+    assert report["problems"] == ["close-up: no part named 'Nozle'"]
+    assert json.loads((out / "report.json").read_text())["close_missing"] == ["Nozle"]
+
+
+def test_sheet_leaves_out_the_before_copies(tmp_path, monkeypatch):
+    from se2modkit.preview import compose
+    out = tmp_path / "r2"
+    m = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 5], [0, 0, 0, 1]]
+    for extra in ("before", "after"):
+        shots.save_camera(_png(out / f"XX_Drive_fix_r2_top_{extra}.png"), m, 14.5)
+    _png(out / "XX_Drive_fix_r2_front.png")
+    seen = []
+    monkeypatch.setattr(compose, "make_sheet", lambda paths, *a, **kw: seen.extend(Path(p).name for p in paths))
+    assert look.finish(out, block="XX_Drive", stage="fix", rnd=2)["problems"] == []
+    assert seen == ["XX_Drive_fix_r2_front.png", "XX_Drive_fix_r2_top_after.png"]

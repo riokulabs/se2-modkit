@@ -28,11 +28,14 @@ images out side by side.
 renders a block's look set straight from its working file (`.blend`, `.glb`, `.gltf` or `.fbx`; read, never written)
 in the look-dev scene (`src/se2modkit/preview/lookdev.py`): mounted on a section of vanilla armor by `--mount-face`,
 beside the mod's `previews.toml` `[lookdev] neighbors` and a scale figure, from in-game eye views. It goes through the
-job queue as a medium job, waits, then writes `sheet.png` and `report.json` (time, triangles, exposure, unmapped
-materials) and lists anything that keeps the set from being shown, including the geometry checks
+job queue as a medium job, waits, then writes `sheet.png` (this round's pictures; a `--before` set's copied
+`_before` images stay off it) and `report.json` (time, triangles, exposure, unmapped materials, `--close` parts that
+matched nothing) and lists anything that keeps the set from being shown, including the geometry checks
 (`src/se2modkit/pipeline/geocheck.py`, written to `geocheck.json`: parts that don't reach the mount, pins off their
 lug, coplanar faces, parts passing clean through others, box-projected UVs on curved parts, cell groups, and the
-triangle budget given with `--tris-budget`). `--no-check` skips them for a quick warp test. Material names that are not Keen slots map
+triangle budget given with `--tris-budget`; if the checks themselves stop on an error, the set fails with that error
+and its report is still written). `--no-check` skips them for a quick warp test (a `--tris-budget` given with it is
+not checked, and the command warns). Material names that are not Keen slots map
 through `[lookdev.materials]`; anything still unmapped renders magenta. No LODs, fracture or export: those come with
 `se2mod build-models` once the look is approved.
 
@@ -49,12 +52,13 @@ and fractured triangle budget checks, so a block can still pass here and fail th
 on the build script does the same in Blender.
 
 Every render path follows one shot standard (`src/se2modkit/preview/shots.py`): eleven view names (`front`, `back`,
-`left`, `right`, `top`, `bottom`, `3q_front`, `3q_back`, `3q_low`, `mount`, `inside`; older names such as `3q_rear`
-still load), files named `<block>_<stage>_r<N>_<view>[_<extra>]`, a `<stem>.cam.json` beside each render so a later
-round reuses the camera, a locator thumbnail on every close-up (`_close-<part>`), and same-camera `_before` / `_after`
-pairs. `se2mod shots check FOLDER --block B --stage look|concept|fix --round N [--interior]` exits 1 and lists what
-keeps a set from being shown: a missing view, a failed exposure check (too dark, too bright, blown or crushed), a
-close-up without a locator, an `_after` without a matching `_before`, or a failure in the set's `geocheck.json`.
+`left`, `right`, `top`, `bottom`, `3q_front`, `3q_back`, `3q_low`, `mount`, `inside`; older names such as `3q_rear`,
+in a camera or a file name, still count as their view), files named `<block>_<stage>_r<N>_<view>[_<extra>]`, a
+`<stem>.cam.json` beside each render so a later round reuses the camera, a locator thumbnail on every close-up
+(`_close-<part>`), and same-camera `_before` / `_after` pairs. `se2mod shots check FOLDER --block B --stage
+look|concept|fix --round N [--interior]` exits 1 and lists what keeps a set from being shown: a missing view, a failed
+exposure check (too dark, too bright, blown or crushed), a close-up without a locator, an `_after` without a matching
+`_before`, or a failure in the set's `geocheck.json`.
 
 ## Tests
 

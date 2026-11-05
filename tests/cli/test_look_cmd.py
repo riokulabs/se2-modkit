@@ -91,3 +91,13 @@ def test_budget_and_no_check_reach_the_job(tmp_path):
                      "--tris-budget", "29000", "--no-check"]) == 0
     job = json.loads((tmp_path / "look" / "X" / "r1" / "job.json").read_text())
     assert job["tris_budget"] == 29000 and job["geocheck"] is False
+
+
+def test_a_budget_without_the_checks_warns(tmp_path, capsys):
+    src = tmp_path / "drive.glb"
+    src.write_bytes(b"glTF")
+    argv = ["look", str(src), "--block", "XX_Drive", "--out", str(tmp_path / "look"), "--print-only"]
+    assert cli.main(argv + ["--tris-budget", "29000", "--no-check"]) == 0
+    assert "--tris-budget is not checked with --no-check" in capsys.readouterr().err
+    assert cli.main(argv + ["--tris-budget", "29000"]) == 0
+    assert "--no-check" not in capsys.readouterr().err
