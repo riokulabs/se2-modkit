@@ -33,7 +33,8 @@ job queue as a medium job, waits, then writes `sheet.png` (this round's pictures
 matched nothing) and lists anything that keeps the set from being shown, including the geometry checks
 (`src/se2modkit/pipeline/geocheck.py`, written to `geocheck.json`: parts that don't reach the mount, pins off their
 lug, coplanar faces, parts passing clean through others, box-projected UVs on curved parts, cell groups, and the
-triangle budget given with `--tris-budget`). `--no-check` skips them for a quick warp test. Material names that are not Keen slots map
+triangle budget given with `--tris-budget`; if the checks themselves stop on an error, the set fails with that error
+and its report is still written). `--no-check` skips them for a quick warp test. Material names that are not Keen slots map
 through `[lookdev.materials]`; anything still unmapped renders magenta. No LODs, fracture or export: those come with
 `se2mod build-models` once the look is approved.
 

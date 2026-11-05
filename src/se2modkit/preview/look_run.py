@@ -194,7 +194,8 @@ def run(job: dict) -> dict:
     if job.get("geocheck", True):
         from se2modkit.pipeline import geocheck as GC
         from se2modkit.preview.geocheck_blend import parts_from_objects
-        GC.run(parts_from_objects(objs, place), tris_budget=job.get("tris_budget")).write(out / "geocheck.json")
+        GC.guarded(lambda: GC.run(parts_from_objects(objs, place), tris_budget=job.get("tris_budget"))).write(
+            out / "geocheck.json")
     report = {"source": job["source"], "set": job["set"], "views": job["views"], "seconds": 0.0,
               "unmapped_materials": unmapped, "close_missing": close_missing, "tris": _tris(objs),
               "half_extents": list(half)}

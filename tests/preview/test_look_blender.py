@@ -132,3 +132,18 @@ def test_cutters_and_render_hidden_collections_stay_out(tmp_path):
                                          views=["front"], set_name="hull", collection="DRIVE"))
     assert report["tris"] == 12
     assert max(report["half_extents"]) == pytest.approx(0.5, abs=1e-3)
+
+
+def test_a_geometry_check_error_still_writes_the_report(tmp_path, monkeypatch):
+    from se2modkit.pipeline import geocheck as GC
+
+    def broken(*a, **kw):
+        raise ValueError("degenerate mesh")
+    monkeypatch.setattr(GC, "run", broken)
+    src = _source(tmp_path)
+    out = tmp_path / "look" / "XX_Drive" / "r1"
+    look_run.run(look.build_job(source=src, block="XX_Drive", out_dir=out, stage="look", rnd=1, views=["front"],
+                                set_name="hull"))
+    assert (out / "report.json").is_file()
+    geo = json.loads((out / "geocheck.json").read_text())
+    assert geo["failures"][0]["check"] == "error" and "degenerate mesh" in geo["failures"][0]["detail"]

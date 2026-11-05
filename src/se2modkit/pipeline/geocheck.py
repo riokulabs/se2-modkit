@@ -15,6 +15,7 @@ the part's `se2_role` / `se2_axis` / `se2_point` / `se2_links` properties or, fa
   tris          more triangles than the kit's budget
   untagged      parts with no role (a warning: they still count for the load path, as structure)
   no_mount      no part is tagged as the mount (a warning: the load path can't be checked)
+  error         the checks themselves stopped (`guarded`): the set fails rather than going out unchecked
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ import numpy as np
 from ..model.placement import build_groups
 from . import zfight
 
-__all__ = ["CONTACT", "MAX_CELL_GROUPS", "Part", "Report", "run"]
+__all__ = ["CONTACT", "MAX_CELL_GROUPS", "Part", "Report", "guarded", "run"]
 
 CONTACT = 0.002          # m: parts this close touch
 PIN_ANGLE = 1.0          # degrees
@@ -362,3 +363,14 @@ def run(parts, *, cells=None, tris_budget: int | None = None) -> Report:
     if tris_budget is not None and report.tris > tris_budget:
         report.add(True, "tris", [], f"{report.tris} triangles, budget {tris_budget}")
     return report
+
+
+def guarded(check) -> Report:
+    """`check()` (which returns a Report), or a report failing with the error it raised, so whoever writes the set's
+    report still writes it and the error is listed with the other problems."""
+    try:
+        return check()
+    except Exception as e:   # noqa: BLE001 - any error in the checks must fail the set, not lose its report
+        report = Report()
+        report.add(True, "error", [], f"the geometry checks stopped: {type(e).__name__}: {e}")
+        return report

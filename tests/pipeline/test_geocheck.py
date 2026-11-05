@@ -231,3 +231,14 @@ def test_box_uv_on_a_short_disc():
     d.uvs = np.array([[[q[0], q[1]] if c else [math.atan2(q[1], q[0]) / (2 * math.pi), q[2]] for q in tri]
                       for tri, c in zip(P, cap)])                  # planar caps, unwrapped rim
     assert not _checks(GC.run([d]), "box_uv")
+
+
+def test_a_check_that_raises_becomes_a_failure():
+    def broken():
+        raise ValueError("degenerate mesh")
+    report = GC.guarded(broken)
+    assert not report.ok
+    assert report.failures == [{"check": "error", "parts": [],
+                                "detail": "the geometry checks stopped: ValueError: degenerate mesh"}]
+    a = box("a", (0, 0, 0), (1, 1, 1))
+    assert GC.guarded(lambda: GC.run([a])).tris == 12
