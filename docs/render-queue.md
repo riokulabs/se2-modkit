@@ -141,6 +141,7 @@ Only one session can be queued or running at a time, because each would want the
 A session that has had no changes for 20 minutes (`SE2_LIVE_IDLE` seconds; `0` turns this off) saves and closes
 itself, but only while another job is waiting: a forgotten Blender then doesn't hold the GPU from everyone, and one
 you are only looking around in is never closed when nobody else needs the GPU.
+If that save fails, the session stays open and the idle count starts over.
 
 Close it by hand, or cancel its job: the queue's SIGTERM makes Blender save the open file first (a file that was never
 saved goes to `~/.cache/se2modkit/live-blender/`) and quit. The queue gives that save up to two minutes before it

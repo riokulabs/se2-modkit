@@ -73,3 +73,43 @@ def test_a_paused_queue_does_not_count_as_waiting(tmp_path):
     assert BL.others_waiting(tmp_path) is True
     (tmp_path / "paused").write_text("")
     assert BL.others_waiting(tmp_path) is False
+
+
+def _fake_bpy(save):
+    """Just enough of bpy for the save-and-quit paths: `save` is what save_mainfile does (raise, or return a result)."""
+    import contextlib
+    import types
+
+    calls = types.SimpleNamespace(quit=0, timers=[])
+    wm_ops = types.SimpleNamespace(save_mainfile=save, quit_blender=lambda: setattr(calls, "quit", calls.quit + 1))
+    fake = types.SimpleNamespace(
+        context=types.SimpleNamespace(window_manager=None, temp_override=lambda **k: contextlib.nullcontext()),
+        data=types.SimpleNamespace(filepath="/work/block.blend", objects=[], is_dirty=True),
+        ops=types.SimpleNamespace(wm=wm_ops),
+        app=types.SimpleNamespace(timers=types.SimpleNamespace(
+            register=lambda f, **k: calls.timers.append(f))))
+    return fake, calls
+
+
+def _refuse():
+    raise RuntimeError("Error: Cannot open file /work/block.blend@ for writing: Permission denied")
+
+
+def test_a_failed_idle_save_keeps_the_session_and_watches_again(monkeypatch):
+    """If the idle stop cannot save, Blender stays open (closing would lose the work) and the idle watch is re-armed,
+    instead of the timer being gone for good."""
+    for save in (_refuse, lambda: {"CANCELLED"}):
+        fake, calls = _fake_bpy(save)
+        monkeypatch.setattr(BL, "bpy", fake)
+        monkeypatch.setattr(BL, "_WATCH", BL.IdleWatch(10, now=0.0))
+        assert BL._idle_stop() is None
+        assert calls.quit == 0
+        assert calls.timers == [BL._tick]
+        assert not BL._WATCH.expired(BL.time.monotonic())             # a fresh idle period before the next try
+
+
+def test_an_idle_save_that_works_closes_the_session(monkeypatch):
+    fake, calls = _fake_bpy(lambda: {"FINISHED"})
+    monkeypatch.setattr(BL, "bpy", fake)
+    BL._idle_stop()
+    assert calls.quit == 1 and calls.timers == []
