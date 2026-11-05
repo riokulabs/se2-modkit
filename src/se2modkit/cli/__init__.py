@@ -46,6 +46,7 @@ def _load_commands() -> None:
         doctor,
         env_cmd,
         facts_cmd,
+        fracture_cmd,
         gpu_cmd,
         kit_cmd,
         lock_cmd,

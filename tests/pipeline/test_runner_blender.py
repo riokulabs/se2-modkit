@@ -131,6 +131,37 @@ def test_export_writes_the_three_models(hooks, clean, monkeypatch, tmp_path):
     assert sum(z["health_share"] for z in fr["zones"]) == pytest.approx(1.0, abs=1e-3)
 
 
+def test_check_fracture_reports_shares_seams_and_loose_geometry(hooks, clean, tmp_path, capsys):
+    """--check-fracture builds the block, cuts LOD0 on its plan and fits the colliders without exporting: the toy plan's
+    critical half counts twice (2/3 of the health), the seam stays clear of the box's vertices, and a stray vertex in
+    a part is reported."""
+    import bmesh
+
+    def loose(spec, built):
+        ob = next(o for o in built["lods"][0][1] if o.name.endswith("_pipe"))
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        bm.verts.new((0.3, 0.3, 0.3))
+        bm.to_mesh(ob.data)
+        bm.free()
+    spec = Spec("XX_Box", "box")
+    r = Runner(hooks=hooks, builders={"box": _build}, catalogue=lambda: [spec], collision={"box": _boxes},
+               bounds=_bounds, extras={"box": [lambda s, entry, built: loose(s, built)]})
+    status = tmp_path / "status.json"
+    assert r.main(["XX_Box", "--check-fracture", f"--status={status}"]) == 0
+    (rep,) = json.loads(status.read_text(encoding="utf-8"))["fracture"]
+    assert rep["status"] == "checked" and rep["tris"] > 0 and rep["cell_groups"]
+    shares = {z["id"]: z["share"] for z in rep["zones"]}
+    assert shares["Fracture_01"] == pytest.approx(2 / 3, abs=0.05) and sum(shares.values()) == pytest.approx(1.0)
+    (seam,) = rep["seams"]
+    assert seam["snap_mm"] == 50.0 and seam["clear_mm"] > 0
+    assert rep["loose"] == {"pipe": {"verts": 1, "edges": 0}}
+    out = capsys.readouterr().out
+    assert "FAIL" in out and "Fracture_01" in out and "pipe" in out
+    assert not (hooks.paths.models / "XX_Box").exists()          # nothing exported
+    assert not hooks.paths.report.exists()                       # and no report written
+
+
 def test_connect_roots_argument_overrides_hooks(hooks):
     hooks.connect_roots = {"nothing"}
 

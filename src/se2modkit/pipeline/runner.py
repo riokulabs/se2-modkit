@@ -1,6 +1,7 @@
 """`Runner`: the build flow a mod's build script runs inside Blender.
 
     se2mod blender run Source/Model/<build>.py -- [BLOCK|PREFIX* ...|all] [--no-render] [--export] [--check-placement]
+        [--check-fracture]
 
 A mod hands it its hooks, builders and catalogue (the scaffolded build script does exactly that):
 
@@ -20,9 +21,11 @@ mod must declare (`inputs=`, `pipeline.inputs`) and what never counts (`outputs=
 files the build writes itself; a file the build writes but does not declare stays an input, keyed by its content):
 docs/incremental-builds.md. `--export` writes `<models>/<name>/` for every block built in the run (`export.export_block`;
 Keen's VRAGE Tools add-on needs a GPU context: run Blender windowed). `--check-placement` re-runs the
-placement analysis on the exported files of the selected blocks (`placement_check.check`). Unless `--no-render`, the
-mod's `preview(built, tag)` renders (tag: $SE2MODKIT_PREVIEW, or the legacy
-$<prefix>PREVIEW, else "adhoc").
+placement analysis on the exported files of the selected blocks (`placement_check.check`). `--check-fracture` builds
+the selected blocks and checks their fracture without exporting (`fracture_probe.check_block`: zone health shares,
+seams, loose LOD0 geometry; `fracture_check` prints them, the --status file holds them under "fracture"); it writes no
+report and no fragment. Unless `--no-render`, the mod's `preview(built, tag)` renders (tag: $SE2MODKIT_PREVIEW, or the
+legacy $<prefix>PREVIEW, else "adhoc").
 
 The module imports offline (selection and the command line are plain Python); building needs Blender.
 """
@@ -44,23 +47,25 @@ from .hooks import HooksError, ModHooks
 
 __all__ = ["DONE", "FAILED", "OPTIONS", "Runner", "Target", "USAGE", "VALUE_OPTIONS", "script_argv"]
 
-OPTIONS = ("--no-render", "--export", "--check-placement", "--force", "--plan", "--blocks-only")
+OPTIONS = ("--no-render", "--export", "--check-placement", "--check-fracture", "--force", "--plan", "--blocks-only")
 VALUE_OPTIONS = ("--status", "--worker", "--adopt")
 USAGE = """Build the mod's models (inside Blender).
 
     se2mod blender run Source/Model/<build>.py -- [BLOCK|PREFIX* ...|all] [--no-render] [--force]
     se2mod blender run --windowed Source/Model/<build>.py -- [BLOCK ...|all] --no-render --export
     se2mod blender run Source/Model/<build>.py -- [BLOCK ...|all] --check-placement
+    se2mod blender run Source/Model/<build>.py -- BLOCK ... --check-fracture   (or: se2mod fracture check MOD BLOCK)
     se2mod build-models MOD [BLOCK ...] [--jobs N] [--force] [--export]     (parallel headless workers)
     se2mod build-models MOD --release       (what a publish needs: clean tree, every block rebuilt and exported, stamped)
 
 BLOCK is a block name, PREFIX* every catalogue block starting with PREFIX (quote it in the shell), "all" (or nothing)
 the pipeline's blocks. --export writes the game models (FBX, collision glTF, export.json) of every block built in the
 run; it needs Keen's VRAGE Tools add-on, so run Blender windowed. --check-placement checks the exported files'
-placement instead of building. --no-render skips the previews. Only stale blocks are built (any input changed since
-their last build, see se2modkit.pipeline.incremental); --force builds every selected block. --status=FILE writes what
-was stale and built as JSON; --plan stops before building when a block is stale; --worker=DIR builds the named blocks
-into fragments in DIR (no report); --adopt=DIR takes such fragments in first."""
+placement instead of building. --check-fracture builds the blocks and checks their fracture (zone health shares,
+seams, loose geometry) without exporting or writing the report. --no-render skips the previews. Only stale blocks are
+built (any input changed since their last build, see se2modkit.pipeline.incremental); --force builds every selected
+block. --status=FILE writes what was stale and built as JSON; --plan stops before building when a block is stale;
+--worker=DIR builds the named blocks into fragments in DIR (no report); --adopt=DIR takes such fragments in first."""
 
 
 DONE, FAILED = "=== BUILD DONE ===", "=== BUILD FAILED ==="   # the windowed run's log markers
@@ -95,6 +100,14 @@ class _LodTable:
 
     def n_lods(self, spec):
         return self.LOD_COUNT.get(spec.name, self.default)
+
+
+def _remove_collection(coll) -> None:
+    """Remove a scratch collection and any object still in it."""
+    import bpy
+    for o in list(coll.objects):
+        bpy.data.objects.remove(o)
+    bpy.data.collections.remove(coll)
 
 
 class Runner:
@@ -293,6 +306,30 @@ class Runner:
         if errors:
             raise SystemExit("\n".join(errors))
         return [c for _, c in out]
+
+    def check_fracture(self, specs) -> list[dict]:
+        """Build each block and run the fracture check on it (fracture_probe.check_block); prints each summary and
+        returns the reports. A block whose build stops (a builder's SystemExit) is reported as an error."""
+        from ..model import objects as OB
+        from . import fracture_check as FC
+        from . import fracture_probe as FP
+        out = []
+        for spec in specs:
+            try:
+                entry = self.build_block(spec, render=False)
+            except SystemExit as e:
+                rep = {"block": spec.name, "family": spec.family, "status": "error", "error": str(e.code)}
+            else:
+                b = self.built[spec.name]
+                coll = OB.new_collection(f"{spec.name}_fracture_check")
+                try:
+                    rep = FP.check_block(self.hooks, spec, b["lods"], b["boxes"], coll,
+                                         entry.get("placement", {}).get("cell_groups"))
+                finally:
+                    _remove_collection(coll)
+            print("\n".join(FC.summary(rep)))
+            out.append(rep)
+        return out
 
     @staticmethod
     def check_cell_groups(spec, entry):
@@ -531,6 +568,13 @@ class Runner:
             self.require_blender()
             done = self.check_placement(specs)
             print(f"checked the placement of {len(done)} exported blocks")
+            return 0
+        if "--check-fracture" in flags:
+            self.require_blender()
+            if not specs:
+                raise SystemExit("No block to check: name one or more blocks of the catalogue.")
+            self.prepare()
+            _write_status(status_path, {"selected": [s.name for s in specs], "fracture": self.check_fracture(specs)})
             return 0
         if not specs and not targets:
             raise SystemExit("No block to build: the catalogue is empty.")
