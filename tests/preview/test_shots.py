@@ -210,4 +210,5 @@ def test_old_view_names_in_file_names_are_read(tmp_path):
     views = [v for v in shots.REQUIRED["concept"] if v != "3q_back"]
     _set(tmp_path, "A", "concept", 1, views)
     _png(tmp_path / "A_concept_r1_3q_rear.png", 10)              # an old name stands for its view, and is checked
-    assert shots.check_set(tmp_path, "A", "concept", 1) == ["exposure: A_concept_r1_3q_rear: too dark (mean 0.04 < 0.18)"]
+    assert shots.check_set(tmp_path, "A", "concept", 1) == [
+        "exposure: A_concept_r1_3q_rear: too dark (mean 0.04 < 0.18)"]

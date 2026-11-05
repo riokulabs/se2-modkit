@@ -20,7 +20,8 @@ from pathlib import Path
 from . import lookdev, shots
 from .compose import PreviewError
 
-__all__ = ["SOURCE_KINDS", "UNMAPPED", "before_cameras", "build_job", "close_hits", "finish", "material_key", "next_round",
+__all__ = ["SOURCE_KINDS", "UNMAPPED", "before_cameras", "build_job", "close_hits", "finish",
+           "material_key", "next_round",
            "queue_argv", "source_kind", "views_for"]
 
 SOURCE_KINDS = ("blend", "glb", "gltf", "fbx")

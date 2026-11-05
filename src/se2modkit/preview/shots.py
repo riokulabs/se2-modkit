@@ -2,7 +2,9 @@
 
 A standard set is one PNG per view, named `<block>_<stage>_r<N>_<view>[_<extra>]`, with a `<stem>.cam.json` beside
 each render so a later round can reuse the exact camera. `extra` is free text after the view: `close-<part>` for a
-close-up (which needs a locator thumbnail, see `add_locator`), `before` / `after` for a same-camera pair.
+close-up (which needs a locator thumbnail, see `add_locator`), `before` / `after` for a same-camera pair. A view part
+is read longest name first, old names included (`parse_shot_name`), so an extra that would spell an old view name with
+the view before it (`3q_front_low`, `iso_back`) is read as that old view: keep extras to the ones above.
 
 `check_set` is the gate: a set with a missing view, a failed exposure check, a close-up without a locator, an
 `_after` without a matching `_before`, or a failure in its `geocheck.json` is not ready to show anyone. Plain Python; Pillow is imported only by the
