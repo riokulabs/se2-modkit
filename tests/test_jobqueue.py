@@ -600,6 +600,22 @@ def test_live_blender_goes_first_even_past_the_priority_lane(tmp_path):
     assert live.env.get("SE2_QUEUE_ROOT") == str(store.root)
 
 
+def test_cli_move_to_counts_from_one_and_refuses_zero(tmp_path, capsys):
+    """`--to N` is a place in the queue, 1 = next to start; 0 is no place, so it is refused instead of quietly
+    meaning the top."""
+    from se2modkit import cli
+    qdir = tmp_path / "q"
+    store = Q.Store(qdir)
+    a, b, c = (store.submit(["true"], name=n, environ={}) for n in ("a", "b", "c"))
+    assert cli.main(["queue", "--queue-dir", str(qdir), "move", str(c.id), "--to", "2"]) == 0
+    assert [j.id for j in store.queued()] == [a.id, c.id, b.id]
+    capsys.readouterr()
+    for bad in ("0", "-1"):
+        assert cli.main(["queue", "--queue-dir", str(qdir), "move", str(b.id), "--to", bad]) == 1
+        assert "--to counts from 1" in capsys.readouterr().err
+    assert [j.id for j in store.queued()] == [a.id, c.id, b.id]                # nothing moved
+
+
 def test_cli_submit_priority(tmp_path, capsys, monkeypatch):
     from se2modkit import cli
     monkeypatch.setattr(Q, "ensure_runner", lambda store: None)                # no real runner in a test

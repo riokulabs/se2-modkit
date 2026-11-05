@@ -191,6 +191,9 @@ def _dispatch(args, env, store: Q.Store) -> int:
         print("queue paused: running jobs carry on, nothing new starts" if what == "pause" else "queue resumed")
         return 0
     if what == "move":
+        if args.to is not None and args.to < 1:
+            raise Q.QueueError(f"--to counts from 1 (1 = next to start), so {args.to} is no place in the queue; "
+                               "use --top for the front.")
         order = store.queued()
         ids = [j.id for j in order]
         if args.job not in ids:

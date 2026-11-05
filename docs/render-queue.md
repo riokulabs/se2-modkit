@@ -128,8 +128,8 @@ join at the end. Jobs submitted with `--priority` (such as `se2mod look`) form a
 orders jobs within their lane. A priority job is next in line, not a pre-emption: a running heavy job finishes first.
 The lane is meant for short jobs: a steady stream of them keeps a waiting heavy job waiting.
 `se2mod build-models MOD BLOCK... --per-block` queues one heavy job per block (`export:<mod>:<block>`) instead of
-building them in one process, so a preview can run between two blocks instead of after the whole batch. While the queue is paused (`<queue folder>/paused` exists), the runner keeps running jobs going and
-stays up, but starts nothing.
+building them in one process, so a preview can run between two blocks instead of after the whole batch. While the
+queue is paused (`<queue folder>/paused` exists), the runner keeps running jobs going and stays up, but starts nothing.
 
 ## Live Blender sessions
 
@@ -141,6 +141,7 @@ Only one session can be queued or running at a time, because each would want the
 A session that has had no changes for 20 minutes (`SE2_LIVE_IDLE` seconds; `0` turns this off) saves and closes
 itself, but only while another job is waiting: a forgotten Blender then doesn't hold the GPU from everyone, and one
 you are only looking around in is never closed when nobody else needs the GPU.
+If that save fails, the session stays open and the idle count starts over.
 
 Close it by hand, or cancel its job: the queue's SIGTERM makes Blender save the open file first (a file that was never
 saved goes to `~/.cache/se2modkit/live-blender/`) and quit. The queue gives that save up to two minutes before it

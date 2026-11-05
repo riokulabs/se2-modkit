@@ -469,14 +469,28 @@ def test_build_rechecks_the_game_after_waiting_for_the_lock(tmp_path, monkeypatc
     held = FileLock(sdkbuild.sdk_lock_path(env))
     assert held.acquire(blocking=False)
 
+    waiting = threading.Event()
+    real_acquire = FileLock.acquire
+
+    def acquire(self, blocking=True, timeout=60.0):
+        if blocking and self is not held:
+            waiting.set()           # the build is now blocked on the lock, not still setting up
+        return real_acquire(self, blocking, timeout)
+
+    monkeypatch.setattr(FileLock, "acquire", acquire)
+
     def game_starts_then_build_finishes():
-        state["running"] = True     # the player starts the game while our build waits
+        # Wait until the build really waits: releasing on a timer raced a slow setup, which then found the lock free.
+        if waiting.wait(timeout=5):
+            state["running"] = True     # the player starts the game while our build waits
         held.release()
 
-    threading.Timer(0.3, game_starts_then_build_finishes).start()
+    other = threading.Thread(target=game_starts_then_build_finishes)
+    other.start()
     run = FakeRun()
     assert sdkbuild.build(env, d, run=run, lock_timeout=5) == sdkbuild.EXIT_GAME_RUNNING
-    assert run.calls == []
+    other.join()
+    assert waiting.is_set() and run.calls == []
     after = FileLock(sdkbuild.sdk_lock_path(env))
     assert after.acquire(blocking=False)   # the lock is not left held
     after.release()

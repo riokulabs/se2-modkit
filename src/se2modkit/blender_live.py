@@ -9,6 +9,7 @@ thread through a short timer, so it acts within half a second.
 An idle session stops itself the same way (save, then quit) when nothing in it has changed for SE2_LIVE_IDLE seconds
 (default 1200; 0 turns it off) AND another job is waiting in the queue, so a forgotten Blender doesn't hold the GPU
 from everyone. Looking around the viewport doesn't count as a change, which is why it never stops while nobody waits.
+If that save fails, the session stays open and the idle watch starts over, so it tries again later.
 """
 
 import json
@@ -66,22 +67,56 @@ def should_stop(watch: IdleWatch, now: float, *, waiting: bool) -> bool:
     return waiting and watch.expired(now)
 
 
-def _save_and_quit():
+def _save() -> bool:
+    """Save the open file (or a copy if it has no name); False if Blender could not."""
     wm = bpy.context.window_manager
     window = wm.windows[0] if wm and wm.windows else None
     try:
         with bpy.context.temp_override(window=window):
             if bpy.data.filepath:
-                bpy.ops.wm.save_mainfile()
-                print(f"se2mod: saved {bpy.data.filepath} before closing")
+                result = bpy.ops.wm.save_mainfile()
+                where = bpy.data.filepath
             elif bpy.data.objects or bpy.data.is_dirty:
                 RECOVERY_DIR.mkdir(parents=True, exist_ok=True)
-                path = RECOVERY_DIR / time.strftime("unsaved-%Y%m%d-%H%M%S.blend")
-                bpy.ops.wm.save_as_mainfile(filepath=str(path), copy=True)
-                print(f"se2mod: the open file had no name; saved a copy to {path}")
+                where = RECOVERY_DIR / time.strftime("unsaved-%Y%m%d-%H%M%S.blend")
+                result = bpy.ops.wm.save_as_mainfile(filepath=str(where), copy=True)
+            else:
+                return True
+    except (RuntimeError, OSError) as exc:
+        print(f"se2mod: could not save: {exc}")
+        return False
+    if "FINISHED" not in result:
+        print(f"se2mod: could not save {where}")
+        return False
+    print(f"se2mod: saved {where} before closing" if bpy.data.filepath else
+          f"se2mod: the open file had no name; saved a copy to {where}")
+    return True
+
+
+def _quit() -> None:
+    wm = bpy.context.window_manager
+    with bpy.context.temp_override(window=wm.windows[0] if wm and wm.windows else None):
+        bpy.ops.wm.quit_blender()
+
+
+def _save_and_quit():
+    """The queue is stopping the job: save what can be saved, then quit either way (SIGKILL follows the grace)."""
+    try:
+        _save()
     finally:
-        with bpy.context.temp_override(window=window):
-            bpy.ops.wm.quit_blender()
+        _quit()
+    return None
+
+
+def _idle_stop():
+    """Idle while others wait: close only once the work is saved. A failed save keeps Blender open and re-arms the
+    idle watch, so the stop is tried again after another idle period instead of never."""
+    if _save():
+        _quit()
+        return None
+    print("se2mod: keeping the session open; the idle stop will try again later")
+    _WATCH.touch(time.monotonic())
+    bpy.app.timers.register(_tick, first_interval=0.5, persistent=True)
     return None
 
 
@@ -103,7 +138,7 @@ def _tick():
         _NEXT_CHECK[0] = now + CHECK_EVERY
         if should_stop(_WATCH, now, waiting=others_waiting(os.environ.get("SE2_QUEUE_ROOT"))):
             print(f"se2mod: idle for {_WATCH.limit / 60:g} min while other jobs wait; saving and closing")
-            bpy.app.timers.register(_save_and_quit, first_interval=0.0)
+            bpy.app.timers.register(_idle_stop, first_interval=0.0)
             return None
     return 0.5   # keeps Python running now and then, so the signal handler gets its turn
 

@@ -28,7 +28,7 @@ HEADINGS = {"id": "ID", "name": "Name", "load": "Load", "state": "State", "gpu":
             "gpu_use": "GPU use", "vram": "VRAM", "elapsed": "Elapsed", "exit": "Exit", "last": "Last output"}
 
 
-# --- plain formatting (no Tk) ---------------------------------------------------------------------------------------
+# --- plain formatting (no Qt) ---------------------------------------------------------------------------------------
 
 def ordered_jobs(jobs: list[Q.JobRecord], finished: int = FINISHED_SHOWN) -> list[Q.JobRecord]:
     """Running jobs, then waiting jobs in the order they will start, then the newest finished ones."""
