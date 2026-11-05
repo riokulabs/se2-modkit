@@ -33,5 +33,5 @@ def main(argv: list[str] | None = None) -> int | None:
 
 if __name__ == "__main__":
     rc = main()
-    if rc is not None:      # None: a windowed Blender runs the build from a timer and quits itself
+    if rc is not None:      # None: a windowed Blender runs the build from a timer; it quits only if se2mod started it
         sys.exit(rc)
