@@ -3,7 +3,8 @@
 The plain-Python half: which views a set needs, the next free round, the job the Blender side (`look_run`) reads, the
 queue command, material names to Keen slots, the cameras a `--before` set used, and `finish`, which runs once the
 render is back: it draws the close-ups' locators, checks exposure and the shot standard, and writes the contact sheet
-and `report.json`, listing the geometry checks' failures (`geocheck.json`) with the rest. Nothing here imports Blender;
+(this round's pictures, without the `_before` copies) and `report.json`, listing the geometry checks' failures
+(`geocheck.json`) and any `--close` part that matched nothing with the rest. Nothing here imports Blender;
 Pillow only in `finish`.
 
 A look set is never the export: no LODs, no fracture, no build. The source is appended into a fresh scene and never
@@ -19,7 +20,7 @@ from pathlib import Path
 from . import lookdev, shots
 from .compose import PreviewError
 
-__all__ = ["SOURCE_KINDS", "UNMAPPED", "before_cameras", "build_job", "finish", "material_key", "next_round",
+__all__ = ["SOURCE_KINDS", "UNMAPPED", "before_cameras", "build_job", "close_hits", "finish", "material_key", "next_round",
            "queue_argv", "source_kind", "views_for"]
 
 SOURCE_KINDS = ("blend", "glb", "gltf", "fbx")
@@ -70,6 +71,11 @@ def material_key(name: str, table: dict) -> tuple[str, bool]:
     if mats.is_keen_slot(name):
         return mats.keen_key(name), False
     return UNMAPPED, True
+
+
+def close_hits(names, part: str) -> list[str]:
+    """The object names a `--close PART` frames: the part itself, or its Blender copies (`Nozzle.001`)."""
+    return [n for n in names if n == part or n.split(".")[0] == part]
 
 
 def before_cameras(before_dir: Path, block: str, views: list[str]) -> dict[str, dict]:
@@ -138,6 +144,7 @@ def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = Fals
     problems = shots.check_set(out, block, stage, rnd, interior=interior)
     problems += [f"unmapped material: {m} (renders magenta; map it in [lookdev.materials])"
                  for m in report.get("unmapped_materials", [])]
+    problems += [f"close-up: no part named {p!r}" for p in report.get("close_missing", [])]
     geo = out / "geocheck.json"
     if geo.is_file():
         try:
@@ -148,7 +155,9 @@ def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = Fals
             report["geocheck"] = {"ok": False, "unreadable": True}
     report["exposure"] = {p.stem: shots.exposure(p).__dict__ for p in sorted(out.glob(f"{block}_{stage}_r{rnd}_*.png"))}
     report["problems"] = problems
-    pngs = sorted(p for p in out.glob(f"{block}_{stage}_r{rnd}_*.png"))
+    # the `_before` halves are copies of an earlier set's pictures: the sheet shows this round
+    pngs = sorted(p for p in out.glob(f"{block}_{stage}_r{rnd}_*.png")
+                  if not ((n := shots.parse_shot_name(p.stem)) and n.extra == "before"))
     if pngs:
         make_sheet([str(p) for p in pngs], out / "sheet.png", cols=3, labels=True, thumb=480)
     report_path.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")

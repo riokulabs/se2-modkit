@@ -37,13 +37,14 @@ def test_look_set_from_a_saved_blend(tmp_path):
     mtime = src.stat().st_mtime_ns
     out = tmp_path / "look" / "XX_Drive" / "r1"
     job = look.build_job(source=src, block="XX_Drive", out_dir=out, stage="look", rnd=1,
-                         views=["3q_front", "front"], set_name="hull", mount_face="-Y", close=["Nozzle"])
+                         views=["3q_front", "front"], set_name="hull", mount_face="-Y", close=["Nozzle", "Nozle"])
     report = look_run.run(job)
     for v in ("3q_front", "front"):
         png = out / f"XX_Drive_look_r1_{v}.png"
         assert png.is_file() and shots.load_camera(png) is not None
     assert shots.load_camera(out / "XX_Drive_look_r1_front.png")["ortho"] > 0
     assert report["unmapped_materials"] == ["Material.012"]
+    assert report["close_missing"] == ["Nozle"]
     assert report["tris"] > 0 and report["seconds"] > 0
     geo = json.loads((out / "geocheck.json").read_text())
     assert geo["parts"] == 2 and any(w["check"] == "no_mount" for w in geo["warnings"])

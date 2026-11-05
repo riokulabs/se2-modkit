@@ -166,7 +166,7 @@ def run(job: dict) -> dict:
             loc, tgt, lens, ortho = lookdev.viewpoint(view, half, center=center)
             cam, _ = _shoot(sc.shot, name, loc, tgt, lens, ortho, out)
         cams[view] = cam
-    close = {}
+    close, close_missing = {}, []
     if job["close"]:
         if "3q_front" not in cams:
             loc, tgt, lens, ortho = lookdev.viewpoint("3q_front", half, center=center)
@@ -174,9 +174,11 @@ def run(job: dict) -> dict:
                                          ortho, out)
         overview = shots.shot_name(block, stage, rnd, "3q_front", "after" if job["before"].get("3q_front") else "")
         for part in job["close"]:
-            hits = [o for o in objs if o.name == part or o.name.split(".")[0] == part]
+            names = look.close_hits([o.name for o in objs], part)
+            hits = [o for o in objs if o.name in names]
             if not hits:
                 print(f"ERROR: no part named {part!r} for a close-up")
+                close_missing.append(part)
                 continue
             ppts = _points(hits, place)
             plo = Vector([min(p[i] for p in ppts) for i in range(3)])
@@ -194,7 +196,8 @@ def run(job: dict) -> dict:
         from se2modkit.preview.geocheck_blend import parts_from_objects
         GC.run(parts_from_objects(objs, place), tris_budget=job.get("tris_budget")).write(out / "geocheck.json")
     report = {"source": job["source"], "set": job["set"], "views": job["views"], "seconds": 0.0,
-              "unmapped_materials": unmapped, "tris": _tris(objs), "half_extents": list(half)}
+              "unmapped_materials": unmapped, "close_missing": close_missing, "tris": _tris(objs),
+              "half_extents": list(half)}
     report["seconds"] = round(time.monotonic() - t0, 1)
     (out / "report.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     print(f"LOOK {out} {report['seconds']} s")
