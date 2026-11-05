@@ -86,7 +86,7 @@ class ShotName:
 
 
 _STEM_RE = re.compile(r"^(?P<block>.+)_(?P<stage>[a-z]+)_r(?P<rnd>\d+)_(?P<rest>.+)$")
-_BY_LENGTH = sorted(VIEWS, key=len, reverse=True)
+_BY_LENGTH = sorted([*VIEWS, *ALIASES], key=len, reverse=True)   # old names too: `3q_front_low` before `3q_front`
 
 
 def shot_name(block: str, stage: str, rnd: int, view: str, extra: str = "") -> str:
@@ -97,13 +97,15 @@ def shot_name(block: str, stage: str, rnd: int, view: str, extra: str = "") -> s
 
 
 def parse_shot_name(stem: str) -> ShotName | None:
+    """The parts of a shot's file name, its view made canonical (a file named with an old alias is read as its view);
+    None when `stem` isn't a shot name."""
     m = _STEM_RE.match(stem)
     if not m:
         return None
     rest = m["rest"]
     for v in _BY_LENGTH:
         if rest == v or rest.startswith(v + "_"):
-            return ShotName(m["block"], m["stage"], int(m["rnd"]), v, rest[len(v) + 1:])
+            return ShotName(m["block"], m["stage"], int(m["rnd"]), canonical(v), rest[len(v) + 1:])
     return None
 
 
@@ -216,20 +218,22 @@ def add_locator(close_png: Path, overview_png: Path, rect_px, out: Path, *, shar
 
 
 def check_set(folder: Path, block: str, stage: str, rnd: int, *, interior: bool = False) -> list[str]:
-    """Every reason this set is not ready to show, one line each; [] when it passes."""
+    """Every reason this set is not ready to show, one line each; [] when it passes. Raises PreviewError on a stage
+    the standard doesn't know."""
+    if stage not in REQUIRED:
+        raise PreviewError(f"unknown stage {stage!r} (stages: {', '.join(REQUIRED)}).")
     folder = Path(folder)
     problems = []
-    views = REQUIRED.get(stage, ()) + (("inside",) if interior else ())
-    for v in views:
-        name = shot_name(block, stage, rnd, v)
-        # the `_after` half of a same-camera pair stands for the view
-        if not (folder / f"{name}.png").is_file() and not (folder / f"{name}_after.png").is_file():
-            problems.append(f"missing view: {v} ({name}.png)")
     ours = {}
     for png in sorted(folder.glob("*.png")):
         n = parse_shot_name(png.stem)
         if n and (n.block, n.stage, n.rnd) == (block, stage, rnd):
             ours[png.stem] = (png, n)
+    # the `_after` half of a same-camera pair stands for the view, and so does a file named with an old alias
+    present = {n.view for _, n in ours.values() if n.extra in ("", "after")}
+    for v in REQUIRED[stage] + (("inside",) if interior else ()):
+        if v not in present:
+            problems.append(f"missing view: {v} ({shot_name(block, stage, rnd, v)}.png)")
     for stem, (png, n) in ours.items():
         e = exposure(png)
         if not e.ok:
