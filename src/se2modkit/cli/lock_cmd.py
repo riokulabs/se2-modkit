@@ -47,8 +47,11 @@ def cmd_lock(args, env) -> int:
                 print(f"{x.owner}\t{x.path}\t{left:.0f} min left")
     except lease.LeaseHeld as e:
         left = (e.lease.since + e.lease.ttl - time.time()) / 60
-        print(f"{e.lease.path} is held by {e.lease.owner} for {left:.0f} more min; ask them, or wait.",
-              file=sys.stderr)
+        print(f"{e.lease.path} is held by {e.lease.owner} for {left:.0f} more min; ask them, wait, or drop their "
+              f"lease with `se2mod lock release --force`.", file=sys.stderr)
+        return 1
+    except lease.LeaseBusy as e:
+        print(str(e), file=sys.stderr)
         return 1
     except ValueError as e:
         print(str(e), file=sys.stderr)
