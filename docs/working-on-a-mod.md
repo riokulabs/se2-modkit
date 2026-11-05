@@ -44,7 +44,9 @@ where each seam landed (how far it snapped and how close the nearest vertex is) 
 plan, cut or collider that can't be made, loose vertices or edges in LOD0, too many cell groups, or, given
 `--max-key-share`, a critical zone over that share of the health; without it such a zone is a WARN line, since a heavy
 critical core can be the design. Most of its time is the block's own build: seconds for a small block, minutes for a
-large drive, against tens of minutes for an export. `--check-fracture` on the build script does the same in Blender.
+large drive, against tens of minutes for an export. It takes the export's first cut only and leaves out its LOD-count
+and fractured triangle budget checks, so a block can still pass here and fail the export on those. `--check-fracture`
+on the build script does the same in Blender.
 
 Every render path follows one shot standard (`src/se2modkit/preview/shots.py`): eleven view names (`front`, `back`,
 `left`, `right`, `top`, `bottom`, `3q_front`, `3q_back`, `3q_low`, `mount`, `inside`; older names such as `3q_rear`

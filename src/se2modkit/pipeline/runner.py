@@ -23,10 +23,9 @@ docs/incremental-builds.md. `--export` writes `<models>/<name>/` for every block
 Keen's VRAGE Tools add-on needs a GPU context: run Blender windowed). `--check-placement` re-runs the
 placement analysis on the exported files of the selected blocks (`placement_check.check`). `--check-fracture` builds
 the selected blocks and checks their fracture without exporting (`fracture_probe.check_block`: zone health shares,
-seams, loose LOD0 geometry; `fracture_check` prints them, the --status file holds them under "fracture"); it writes
-no report and no fragment. Unless `--no-render`, the
-mod's `preview(built, tag)` renders (tag: $SE2MODKIT_PREVIEW, or the legacy
-$<prefix>PREVIEW, else "adhoc").
+seams, loose LOD0 geometry; `fracture_check` prints them, the --status file holds them under "fracture"); it writes no
+report and no fragment. Unless `--no-render`, the mod's `preview(built, tag)` renders (tag: $SE2MODKIT_PREVIEW, or the
+legacy $<prefix>PREVIEW, else "adhoc").
 
 The module imports offline (selection and the command line are plain Python); building needs Blender.
 """
@@ -62,10 +61,10 @@ USAGE = """Build the mod's models (inside Blender).
 BLOCK is a block name, PREFIX* every catalogue block starting with PREFIX (quote it in the shell), "all" (or nothing)
 the pipeline's blocks. --export writes the game models (FBX, collision glTF, export.json) of every block built in the
 run; it needs Keen's VRAGE Tools add-on, so run Blender windowed. --check-placement checks the exported files'
-placement instead of building. --check-fracture builds the blocks and checks their fracture (zone health
-shares, seams, loose geometry) without exporting or writing the report. --no-render skips the previews. Only stale blocks are built (any input changed since
-their last build, see se2modkit.pipeline.incremental); --force builds every selected block. --status=FILE writes what
-was stale and built as JSON; --plan stops before building when a block is stale; --worker=DIR builds the named blocks
+placement instead of building. --check-fracture builds the blocks and checks their fracture (zone health shares,
+seams, loose geometry) without exporting or writing the report. --no-render skips the previews. Only stale blocks are
+built (any input changed since their last build, see se2modkit.pipeline.incremental); --force builds every selected
+block. --status=FILE writes what was stale and built as JSON; --plan stops before building when a block is stale; --worker=DIR builds the named blocks
 into fragments in DIR (no report); --adopt=DIR takes such fragments in first."""
 
 
@@ -310,7 +309,7 @@ class Runner:
 
     def check_fracture(self, specs) -> list[dict]:
         """Build each block and run the fracture check on it (fracture_probe.check_block); prints each summary and
-        returns the reports. A block whose build stops (too many cell groups, say) is reported as an error."""
+        returns the reports. A block whose build stops (a builder's SystemExit) is reported as an error."""
         from ..model import objects as OB
         from . import fracture_check as FC
         from . import fracture_probe as FP
