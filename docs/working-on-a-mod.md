@@ -44,8 +44,9 @@ Every render path follows one shot standard (`src/se2modkit/preview/shots.py`): 
 in a camera or a file name, still count as their view), files named `<block>_<stage>_r<N>_<view>[_<extra>]`, a
 `<stem>.cam.json` beside each render so a later round reuses the camera, a locator thumbnail on every close-up
 (`_close-<part>`), and same-camera `_before` / `_after` pairs. `se2mod shots check FOLDER --block B --stage
-look|concept|fix --round N [--interior]` exits 1 and lists what keeps a set from being shown: a missing view, a failed exposure check (too dark, too bright, blown or crushed), a
-close-up without a locator, an `_after` without a matching `_before`, or a failure in the set's `geocheck.json`.
+look|concept|fix --round N [--interior]` exits 1 and lists what keeps a set from being shown: a missing view, a failed
+exposure check (too dark, too bright, blown or crushed), a close-up without a locator, an `_after` without a matching
+`_before`, or a failure in the set's `geocheck.json`.
 
 ## Tests
 
