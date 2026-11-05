@@ -60,7 +60,8 @@ def test_qt_window_lists_jobs_and_moves_them(tmp_path, monkeypatch):
     import pytest
 
     pytest.importorskip("PySide6")
-    monkeypatch.setattr(Q, "spawn_runner", lambda root: None)                  # never start a real runner here
+    spawned = []
+    monkeypatch.setattr(Q, "spawn_runner", spawned.append)                      # never start a real runner here
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     from PySide6 import QtWidgets
 
@@ -94,6 +95,7 @@ def test_qt_window_lists_jobs_and_moves_them(tmp_path, monkeypatch):
         win.toggle_blender()
         live = store.live_blender()
         assert live is not None and store.queued()[0].id == live.id and win.blender_btn.text() == "Cancel Blender"
+        assert spawned == [store.root]                                  # the window asked for a runner: the stub
         win.toggle_blender()                                            # a waiting session is simply cancelled
         assert store.live_blender() is None and win.blender_btn.text() == "Start Blender"
     finally:
