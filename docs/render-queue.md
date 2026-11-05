@@ -128,8 +128,8 @@ join at the end. Jobs submitted with `--priority` (such as `se2mod look`) form a
 orders jobs within their lane. A priority job is next in line, not a pre-emption: a running heavy job finishes first.
 The lane is meant for short jobs: a steady stream of them keeps a waiting heavy job waiting.
 `se2mod build-models MOD BLOCK... --per-block` queues one heavy job per block (`export:<mod>:<block>`) instead of
-building them in one process, so a preview can run between two blocks instead of after the whole batch. While the queue is paused (`<queue folder>/paused` exists), the runner keeps running jobs going and
-stays up, but starts nothing.
+building them in one process, so a preview can run between two blocks instead of after the whole batch. While the
+queue is paused (`<queue folder>/paused` exists), the runner keeps running jobs going and stays up, but starts nothing.
 
 ## Live Blender sessions
 
