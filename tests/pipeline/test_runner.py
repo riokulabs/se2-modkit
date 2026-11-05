@@ -63,7 +63,7 @@ def test_runner_help_and_unknown_option(hooks, capsys):
     r = _runner(hooks)
     assert r.main(["--help"]) == 0
     out = capsys.readouterr().out
-    assert "--export" in out and "--no-render" in out and "--check-placement" in out
+    assert "--export" in out and "--no-render" in out and "--check-placement" in out and "--check-fracture" in out
     assert r.main(["--frobnicate"]) == 2
     assert "--frobnicate" in capsys.readouterr().err
 
@@ -255,6 +255,13 @@ def test_check_placement_outside_blender_says_so(hooks, capsys):
     if _in_blender():
         pytest.skip("inside Blender")
     assert _runner(hooks, bounds=lambda s: ((0, 0, 0), (0, 0, 0))).main(["--check-placement"]) == 2
+    assert "inside Blender" in capsys.readouterr().err
+
+
+def test_check_fracture_outside_blender_says_so(hooks, capsys):
+    if _in_blender():
+        pytest.skip("inside Blender")
+    assert _runner(hooks).main(["--check-fracture"]) == 2
     assert "inside Blender" in capsys.readouterr().err
 
 
