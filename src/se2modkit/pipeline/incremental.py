@@ -71,8 +71,8 @@ __all__ = ["FRAGMENT_VERSION", "LOCK_ENV", "LockHeld", "Outputs", "STATE_ENV", "
 FRAGMENT_VERSION = 2
 STATE_ENV = BS.STATE_ENV
 # Environment names (after SE2MODKIT_ or the mod prefix) that never change a model: the render tag, the windowed
-# run's quit switch, where the fragments live.
-_ENV_IGNORED = frozenset({"PREVIEW", "NO_QUIT", "BUILD_STATE", "BUILD_LOCK"})
+# run's quit switches, where the fragments live.
+_ENV_IGNORED = frozenset({"PREVIEW", "NO_QUIT", "OWNS_BLENDER", "BUILD_STATE", "BUILD_LOCK"})
 # Tables keyed by family: a block reads only its own family's entry.
 _FAMILY_TABLES = frozenset({"keep_whole", "roles", "dent", "jag", "plans", "spark_kind", "per_zone", "analogue",
                             "leaf_frame", "spawned_subparts", "core_parts", "scaffold_zone_boxes"})

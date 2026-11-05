@@ -237,6 +237,7 @@ def test_spec_hooks_modkit_and_env_changes(toy, hooks, monkeypatch, capsys):
     assert len(toy.run("--no-render")) == 3
     monkeypatch.setenv("SE2MODKIT_PREVIEW", "tag")                               # render-only: nothing
     monkeypatch.setenv("XX_NO_QUIT", "1")
+    monkeypatch.setenv("SE2MODKIT_OWNS_BLENDER", "1")                            # who started Blender: nothing
     assert toy.run("--no-render") == []
     monkeypatch.setenv("SE2MODKIT_LOD_BIAS", "1")                               # any other modkit setting: all
     assert len(toy.run("--no-render")) == 3

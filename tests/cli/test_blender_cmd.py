@@ -113,6 +113,7 @@ def test_build_env_carries_game_and_sdk_versions(tmp_path):
     assert child["KEEP"] == "1"
     assert child["SE2MODKIT_GAME_VERSION"] == str(env.game_version or "none")
     assert child["SE2MODKIT_SDK_BUILDID"] == str(env.sdk_buildid or "none")
+    assert child["SE2MODKIT_OWNS_BLENDER"] == "1"          # the Blender it starts is the tool's own: it may quit it
 
 
 def test_blender_argv_installs_the_read_hook_before_the_script(tmp_path):
