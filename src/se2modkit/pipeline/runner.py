@@ -64,8 +64,8 @@ run; it needs Keen's VRAGE Tools add-on, so run Blender windowed. --check-placem
 placement instead of building. --check-fracture builds the blocks and checks their fracture (zone health shares,
 seams, loose geometry) without exporting or writing the report. --no-render skips the previews. Only stale blocks are
 built (any input changed since their last build, see se2modkit.pipeline.incremental); --force builds every selected
-block. --status=FILE writes what was stale and built as JSON; --plan stops before building when a block is stale; --worker=DIR builds the named blocks
-into fragments in DIR (no report); --adopt=DIR takes such fragments in first."""
+block. --status=FILE writes what was stale and built as JSON; --plan stops before building when a block is stale;
+--worker=DIR builds the named blocks into fragments in DIR (no report); --adopt=DIR takes such fragments in first."""
 
 
 DONE, FAILED = "=== BUILD DONE ===", "=== BUILD FAILED ==="   # the windowed run's log markers
