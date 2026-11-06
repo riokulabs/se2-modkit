@@ -66,6 +66,8 @@ def test_before_set_reuses_its_cameras(tmp_path):
                                 set_name="hull", before=r1))
     assert (r2 / "XX_Drive_look_r2_top_before.png").is_file() and (r2 / "XX_Drive_look_r2_top_after.png").is_file()
     assert shots.load_camera(r2 / "XX_Drive_look_r2_top_after.png") == shots.load_camera(r1 / "XX_Drive_look_r1_top.png")
+    cam = shots.load_camera(r1 / "XX_Drive_look_r1_top.png")["matrix"]
+    assert cam[2][3] > 1.0   # the camera's real place above the block, not the identity of an unevaluated scene
 
 
 def test_checks_and_counts_see_modifiers(tmp_path):

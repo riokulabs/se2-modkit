@@ -39,6 +39,18 @@ not checked, and the command warns). Material names that are not Keen slots map
 through `[lookdev.materials]`; anything still unmapped renders magenta. No LODs, fracture or export: those come with
 `se2mod build-models` once the look is approved.
 
+Keen slots draw from the Mod SDK's own source maps when the SDK is installed (`src/se2modkit/preview/sdkmat.py` reads
+each material's `.def`, its `.comptex` recipes and their packing presets): albedo with the player paint through the
+color mask, normal (OpenGL green, as the SDK ships it), roughness, metalness, AO and emissive, downsized once into the
+private texture cache. Glass, screens without an emissive mask, decal atlases and the fracture material keep their
+own stand-ins, and every slot falls back to a flat stand-in color without the SDK.
+
+`se2mod kit library` unpacks Keen's Blender material and decal library from the SDK's `BlenderMaterialLibrary` zip
+into the user cache once and prints the folder to add as a Blender asset library. `--check` opens it in a queued,
+read-only Blender and lists its image paths that do not exist here (they point at Keen's machines; most have a copy
+in the game or SDK install, which it names). `--register` adds the folder to your Blender preferences, also through
+the queue; it is never done unless asked.
+
 `se2mod fracture check MOD BLOCK ... [--max-key-share F] [--json]` checks a block's fracture before an export. It
 builds the block in a headless Blender through the job queue (a medium job), then plans its fracture, cuts LOD0 and
 fits the zone colliders the way the export does (`src/se2modkit/pipeline/fracture_probe.py`), without writing any

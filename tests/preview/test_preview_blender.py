@@ -56,3 +56,39 @@ def test_material_stand_ins():
     assert mats.get("NoSuchKey").name.startswith("pv_NoSuchKey")
     scaffold = "4050183d-1340-4643-b8b9-124981f2121d"
     assert mats.key_for_guid(scaffold) == scaffold and mats.get(scaffold) is not None
+
+
+def _tiny_png(path, rgba):
+    im = bpy.data.images.new(path.stem, 8, 8)
+    im.pixels[:] = list(rgba) * 64
+    im.filepath_raw = str(path)
+    im.file_format = "PNG"
+    im.save()
+    bpy.data.images.remove(im)
+    return str(path)
+
+
+def test_sdk_source_map_material(tmp_path, monkeypatch):
+    """A Principled BSDF from source maps (tiny PNGs written here): paint through the color mask, AO on the base
+    color, roughness and metalness as they are, the normal map into a tangent Normal Map with green not flipped."""
+    from se2modkit.preview import sdkmat
+    monkeypatch.setitem(mats._PATHS, "texcache", str(tmp_path / "cache"))
+    S = sdkmat.Source
+    maps = {r: S(path=_tiny_png(tmp_path / f"m_{r}.png", v)) for r, v in (
+        ("albedo", (0.5, 0.5, 0.5, 1)), ("metal", (1, 1, 1, 1)), ("roughness", (0.3, 0.3, 0.3, 1)),
+        ("normal", (0.5, 0.5, 1, 1)), ("ao", (0.9, 0.9, 0.9, 1)), ("colormask", (1, 1, 1, 1)))}
+    maps["emissive"] = S(value=0.0)
+    m = mats.sdk_pbr_mat("pv_SDK:Test:blue", sdkmat.Material("Test", "PBRMaterialDefinitionObjectBuilder", maps),
+                         "PMC:blue", "blue")
+    nt = m.node_tree
+    b = nt.nodes["Principled BSDF"]
+    linked = {lk.to_socket.name: lk.from_node for lk in nt.links if lk.to_node == b}
+    assert set(linked) >= {"Base Color", "Metallic", "Roughness", "Normal"}
+    assert linked["Normal"].bl_idname == "ShaderNodeNormalMap" and linked["Normal"].space == "TANGENT"
+    feeding = [lk.from_node for lk in nt.links if lk.to_node == linked["Normal"]]
+    assert [n.bl_idname for n in feeding] == ["ShaderNodeTexImage"]   # OpenGL green: straight in
+    assert feeding[0].image.colorspace_settings.name == "Non-Color"
+    paint = [n for n in nt.nodes if n.bl_idname == "ShaderNodeMix" and n.inputs[0].is_linked]
+    assert paint and abs(paint[0].inputs[7].default_value[2] - mats.PAINTS["blue"][2] / mats.PAINT_ALBEDO_REF) < 1e-4
+    assert not b.inputs["Emission Strength"].default_value
+    assert all(p.name.startswith("s1024_") for p in (tmp_path / "cache").glob("*.png"))

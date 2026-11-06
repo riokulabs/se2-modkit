@@ -234,7 +234,7 @@ def real(hooks, part, damaged=False, dm_slots=None, paint="keen"):
         if n in table:
             t = table[n]
             return PM.get(PM.keen_key(t)) if t.startswith("WindowGlassBroken") else broken_mat(t)
-    return PM.get(PM.keen_key(n, paint))
+    return PM.get(PM.slot_key(n, paint))
 
 
 # ---------------------------------------------------------------------------------------------------- subjects
