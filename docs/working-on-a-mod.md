@@ -51,6 +51,22 @@ large drive, against tens of minutes for an export. It takes the export's first 
 and fractured triangle budget checks, so a block can still pass here and fail the export on those. `--check-fracture`
 on the build script does the same in Blender.
 
+`se2mod ship check MOD BLOCK ... [--max-key-share F] [--blend FILE] [--json] [--print-only]` is the one check to run
+before a drive's export, read-only. First, before anything is queued, the queue order
+(`src/se2modkit/pipeline/ship_check.py`): a job that saves or holds the block's working `.blend` (a live Blender on
+it, or any job naming it) must not wait behind, or run beside, a build or export of the block, or that run reads the
+old file; that is a FAIL and nothing is queued. A save queued ahead of the export, a live Blender on another file and
+an `se2mod lock` lease on the `.blend` are WARN lines: save and release before the export. The `.blend` files are the
+ones the block's last build read, any `--blend`, and, after the run, the ones it loaded. Then one medium headless job
+builds the block as the export would and reports what ships: every model the export takes, and each working-file
+collection the build loaded with every object in it, by render visibility (a viewport-hidden object still ships and
+gets a WARN; a render-hidden stand-in is listed as out; a shipping object named like a stand-in gets a WARN). It runs
+the export's own z-fight audit on the built models, so coplanar faces between collections (after the build has merged
+them) fail, then the fracture check above, and renders a tinted exploded picture of the fracture zones with each
+zone's box and a legend of names and health shares. It writes only `Source/Model/preview/ship/<block>/exploded.png`
+and `ship.json`; one summary line per block, then PASS or FAIL. Exit 0 pass, 1 a FAIL line, 2 the run failed.
+`--check-ship --ship-out=DIR` on the build script does the Blender part.
+
 Every render path follows one shot standard (`src/se2modkit/preview/shots.py`): eleven view names (`front`, `back`,
 `left`, `right`, `top`, `bottom`, `3q_front`, `3q_back`, `3q_low`, `mount`, `inside`; older names such as `3q_rear`,
 in a camera or a file name, still count as their view), files named `<block>_<stage>_r<N>_<view>[_<extra>]`, a

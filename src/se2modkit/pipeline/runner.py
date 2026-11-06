@@ -1,7 +1,7 @@
 """`Runner`: the build flow a mod's build script runs inside Blender.
 
     se2mod blender run Source/Model/<build>.py -- [BLOCK|PREFIX* ...|all] [--no-render] [--export] [--check-placement]
-        [--check-fracture]
+        [--check-fracture] [--check-ship [--ship-out=DIR]]
 
 A mod hands it its hooks, builders and catalogue (the scaffolded build script does exactly that):
 
@@ -24,8 +24,11 @@ Keen's VRAGE Tools add-on needs a GPU context: run Blender windowed). `--check-p
 placement analysis on the exported files of the selected blocks (`placement_check.check`). `--check-fracture` builds
 the selected blocks and checks their fracture without exporting (`fracture_probe.check_block`: zone health shares,
 seams, loose LOD0 geometry; `fracture_check` prints them, the --status file holds them under "fracture"); it writes no
-report and no fragment. Unless `--no-render`, the mod's `preview(built, tag)` renders (tag: $SE2MODKIT_PREVIEW, or the
-legacy $<prefix>PREVIEW, else "adhoc").
+report and no fragment. `--check-ship` does what the fracture check does and, per block, records what the export
+takes and the working-file collections it came from, runs the export's z-fight audit and renders a tinted exploded
+fracture picture into `--ship-out`/<block>/ (`check_ship`; the status file holds the reports under "ship"); it writes
+no report and no fragment either. Unless `--no-render`, the mod's `preview(built, tag)` renders (tag:
+$SE2MODKIT_PREVIEW, or the legacy $<prefix>PREVIEW, else "adhoc").
 
 The module imports offline (selection and the command line are plain Python); building needs Blender.
 """
@@ -47,14 +50,16 @@ from .hooks import HooksError, ModHooks
 
 __all__ = ["DONE", "FAILED", "OPTIONS", "Runner", "Target", "USAGE", "VALUE_OPTIONS", "script_argv"]
 
-OPTIONS = ("--no-render", "--export", "--check-placement", "--check-fracture", "--force", "--plan", "--blocks-only")
-VALUE_OPTIONS = ("--status", "--worker", "--adopt")
+OPTIONS = ("--no-render", "--export", "--check-placement", "--check-fracture", "--check-ship", "--force", "--plan",
+           "--blocks-only")
+VALUE_OPTIONS = ("--status", "--worker", "--adopt", "--ship-out")
 USAGE = """Build the mod's models (inside Blender).
 
     se2mod blender run Source/Model/<build>.py -- [BLOCK|PREFIX* ...|all] [--no-render] [--force]
     se2mod blender run --windowed Source/Model/<build>.py -- [BLOCK ...|all] --no-render --export
     se2mod blender run Source/Model/<build>.py -- [BLOCK ...|all] --check-placement
     se2mod blender run Source/Model/<build>.py -- BLOCK ... --check-fracture   (or: se2mod fracture check MOD BLOCK)
+    se2mod blender run Source/Model/<build>.py -- BLOCK ... --check-ship [--ship-out=DIR]   (or: se2mod ship check)
     se2mod build-models MOD [BLOCK ...] [--jobs N] [--force] [--export]     (parallel headless workers)
     se2mod build-models MOD --release       (what a publish needs: clean tree, every block rebuilt and exported, stamped)
 
@@ -62,7 +67,8 @@ BLOCK is a block name, PREFIX* every catalogue block starting with PREFIX (quote
 the pipeline's blocks. --export writes the game models (FBX, collision glTF, export.json) of every block built in the
 run; it needs Keen's VRAGE Tools add-on, so run Blender windowed. --check-placement checks the exported files'
 placement instead of building. --check-fracture builds the blocks and checks their fracture (zone health shares,
-seams, loose geometry) without exporting or writing the report. --no-render skips the previews. Only stale blocks are
+seams, loose geometry) without exporting or writing the report. --check-ship adds what ships, the z-fight audit
+and an exploded fracture picture in --ship-out=DIR/<block>/. --no-render skips the previews. Only stale blocks are
 built (any input changed since their last build, see se2modkit.pipeline.incremental); --force builds every selected
 block. --status=FILE writes what was stale and built as JSON; --plan stops before building when a block is stale;
 --worker=DIR builds the named blocks into fragments in DIR (no report); --adopt=DIR takes such fragments in first."""
@@ -331,6 +337,60 @@ class Runner:
             out.append(rep)
         return out
 
+    def check_ship(self, specs, out_dir: Path | None = None) -> list[dict]:
+        """Build each block as the export would and check it before the export (the report in `ship_check`): what
+        ships (`ship_probe.shipping_set`, and the working-file collections the build loaded), the export's z-fight
+        audit on it (every fault row), the fracture check, and the exploded fracture picture in out_dir/<block>/."""
+        from ..model import objects as OB
+        from . import fracture_probe as FP
+        from . import ship_check as SC
+        from . import ship_probe as SP
+        from . import zfight
+        out = []
+        for spec in specs:
+            rep = {"block": spec.name, "family": spec.family, "status": "checked", "error": None, "shipping": [],
+                   "collision": [], "sources": [], "zfight": {}, "fracture": None, "zone_bounds": {},
+                   "preview": None, "preview_error": None}
+            with SP.capture_sources() as sources:
+                try:
+                    entry = self.build_block(spec, render=False)
+                except SystemExit as e:
+                    entry = None
+                    rep.update(status="error", error=str(e.code))
+            rep["sources"] = sources.report()
+            if entry is not None:
+                b = self.built[spec.name]
+                rep["shipping"], rep["collision"] = SP.shipping_set(b)
+                zf = self.audit(spec)
+                faults = dict(zip(("decal_elements", *zfight.REPORT_KEYS[1:]), zfight.conflicts(zf)))
+                faults.update({k: v for k, v in zf.items() if k not in zfight.REPORT_KEYS and isinstance(v, list)})
+                rep["zfight"] = {k: [list(r) if isinstance(r, tuple) else r for r in v] for k, v in faults.items() if v}
+
+                def preview(plan, whole, caps, shares, spec=spec, rep=rep):
+                    try:
+                        rep["zone_bounds"] = SP.zone_bounds(plan, whole, caps)
+                    except Exception as e:  # noqa: BLE001 (lost bounds lose the picture, never the check)
+                        rep["preview_error"] = f"zone bounds: {type(e).__name__}: {e}"
+                        return
+                    if out_dir is None:
+                        rep["preview_error"] = "no --ship-out folder"
+                        return
+                    try:
+                        rep["preview"] = str(SP.render_exploded(
+                            f"{spec.name}: fracture zones, exploded (share of the health)", plan, whole, caps, shares,
+                            Path(out_dir) / spec.name / "exploded.png"))
+                    except Exception as e:  # noqa: BLE001 (a failed picture is a warning, never a lost check)
+                        rep["preview_error"] = f"{type(e).__name__}: {e}"
+                coll = OB.new_collection(f"{spec.name}_ship_check")
+                try:
+                    rep["fracture"] = FP.check_block(self.hooks, spec, b["lods"], b["boxes"], coll,
+                                                     entry.get("placement", {}).get("cell_groups"), on_cut=preview)
+                finally:
+                    _remove_collection(coll)
+            print("\n".join(SC.summary(rep)))
+            out.append(rep)
+        return out
+
     @staticmethod
     def check_cell_groups(spec, entry):
         """Stop the build when the block's occupied cells form more groups than the game handles (a mod's own
@@ -575,6 +635,14 @@ class Runner:
                 raise SystemExit("No block to check: name one or more blocks of the catalogue.")
             self.prepare()
             _write_status(status_path, {"selected": [s.name for s in specs], "fracture": self.check_fracture(specs)})
+            return 0
+        if "--check-ship" in flags:
+            self.require_blender()
+            if not specs:
+                raise SystemExit("No block to check: name one or more blocks of the catalogue.")
+            self.prepare()
+            out = Path(values["--ship-out"][-1]) if values["--ship-out"] else None
+            _write_status(status_path, {"selected": [s.name for s in specs], "ship": self.check_ship(specs, out)})
             return 0
         if not specs and not targets:
             raise SystemExit("No block to build: the catalogue is empty.")
