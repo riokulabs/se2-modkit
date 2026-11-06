@@ -175,9 +175,15 @@ tol = 0.05
     assert [r["ok"] for r in res] == [True, True] and res[1]["measured"] == pytest.approx(0.88)
     nested = [_part("m_bell", (50, 50, 0), (930, 930, 500), coll="M_mil"),
               _part("base_plate", (0, 0, 500), (1000, 1000, 600), coll="M_mil_base")]  # a child collection
-    res = D.check_targets(ts, nested, collections=["M_mil"])  # the run's collection decides, nested parts count
+    for p in nested:
+        p["block"] = "M_mil"                       # the collection the run named
+    res = D.check_targets(ts, nested)              # the block decides, so the nested base counts
     assert [r["name"] for r in res] == ["military bell inside the plate"] and res[0]["ok"]
-    assert D.check_targets(ts, nested, collections=["Other"]) == []
+    for p in ind:
+        p["block"] = "M_ind"
+    res = D.check_targets(ts, ind + nested)       # two blocks in one run: each target measures only its own block
+    assert [r["ok"] for r in res] == [True, True] and res[0]["measured"] == pytest.approx(1.0)
+    assert D.check_targets(ts, [dict(p, block="Other") for p in nested]) == []
     with pytest.raises(D.TargetError, match="list of name patterns"):
         D.parse_targets('```targets\n[[target]]\na = "x.x"\nvalue = 1\ntol = 1\ncollections = 3\n```\n')
 

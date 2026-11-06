@@ -261,23 +261,18 @@ def _measure(ref, parts):
     return max(p["hi"][k] for p in hit) - min(p["lo"][k] for p in hit), len(hit)
 
 
-def check_targets(targets: list[dict], parts: list[dict], collections=None) -> list[dict]:
+def check_targets(targets: list[dict], parts: list[dict]) -> list[dict]:
     """[{"name", "ok", "measured", "value", "tol", "why"}]: a length in mm, or a ratio when the target has `b`.
-    `collections` are the collections the run describes (each a block, nested collections included). A target with
-    `collections` applies only when one of them matches, and is then measured on all the parts; it is left out
-    otherwise. Without run collections (the whole scene), a part's own collection is matched instead."""
-    run = list(collections or [])
+    A target with `collections` is measured on the parts of the blocks whose collection matches: a part's `block`
+    (the collection the run named, nested collections included) or, in a whole-scene run, its own collection. It is
+    left out when no part matches."""
     out = []
     for t in targets:
         pats = t.get("collections") or []
-        if not pats:
-            mine = parts
-        elif run:
-            if not any(fnmatch.fnmatchcase(c, pat) for c in run for pat in pats):
-                continue
-            mine = parts
-        else:
-            mine = [p for p in parts if any(fnmatch.fnmatchcase(p.get("collection", ""), pat) for pat in pats)]
+        mine = parts
+        if pats:
+            mine = [p for p in parts
+                    if any(fnmatch.fnmatchcase(p.get("block") or p.get("collection", ""), pat) for pat in pats)]
             if not mine:
                 continue
         r = {"name": t["name"], "value": t["value"], "tol": t["tol"], "measured": None, "ok": False, "why": ""}
@@ -367,7 +362,7 @@ def finish(body: dict, *, envelope=None, targets=None, mid_from="bbox center", *
         block["envelope_m"], block["fill"] = env, fill
     rep = {**extra, "block": block, "parts": parts, "floating": body["floating"], "overlaps": body["overlaps"],
            "mirror_errors": body["mirror_errors"]}
-    rep["targets"] = check_targets(targets, parts, extra.get("collections")) if targets else []
+    rep["targets"] = check_targets(targets, parts) if targets else []
     return rep
 
 
@@ -387,6 +382,7 @@ def _scene_parts(collections):
     dg = bpy.context.evaluated_depsgraph_get()
     parts, seen = [], set()
     for top in tops:
+        block = top.name if collections else None   # the block a part belongs to, for collection targets
         for ob, coll in shipping_objects(top):
             if ob.name in seen:
                 continue
@@ -412,8 +408,8 @@ def _scene_parts(collections):
                 ev.to_mesh_clear()
             lo = [min(v[k] for v in verts) * 1000 for k in range(3)]
             hi = [max(v[k] for v in verts) * 1000 for k in range(3)]
-            parts.append({"name": ob.name, "collection": coll, "role": role_of(ob.name, coll), "lo": lo, "hi": hi,
-                          "tris": tris, "_verts": verts, "_closed": closed,
+            parts.append({"name": ob.name, "collection": coll, "block": block, "role": role_of(ob.name, coll),
+                          "lo": lo, "hi": hi, "tris": tris, "_verts": verts, "_closed": closed,
                           "_bvh": BVHTree.FromPolygons(verts, polys) if polys else None})
     return parts, missing
 

@@ -110,9 +110,9 @@ value = 0.6       # in mm when there is no b
 tol = 0.05
 ```
 
-An optional `collections = ["*_belt_v1"]` (name patterns) limits a target to runs whose `--collection` matches, so one
-file can hold targets for several block families; the target then measures every part of that collection, nested
-collections included, and any other run skips it.
+An optional `collections = ["*_belt_v1"]` (name patterns) limits a target to the blocks whose `--collection` matches,
+so one file can hold targets for several block families: it measures every part of a matching block, nested
+collections included, and skips a run with none. A whole-scene run matches each part's own collection instead.
 
 Each target prints PASS or FAIL with what it measured; a pattern that matches no part is a FAIL. Exit 0 when every
 target passes, 1 on a FAIL, 2 when the run itself fails (a missing file or collection, a malformed targets block).
