@@ -2,13 +2,18 @@
 
 The SDK ships the library as a zip (a .blend with the materials and decals, a Blender asset catalog file and some
 preview images). `unpack` extracts it once into the user cache (`<cache>/blender-library/<zip stem>-<stamp>/`, never a
-repository) and returns that folder: the path to register as a Blender asset library. The probe and register steps
-run inside Blender through the job queue (`library_blend.py`); this module never starts Blender.
+repository) and returns that folder: the path to register as a Blender asset library. The probe, relink and register
+steps run inside Blender through the job queue (`library_blend.py`); this module never starts Blender.
+
+The library's images point at Keen's own machines (`//../../../KSHProjects/...`). A relink writes a copy of the
+library beside the unpacked one (`<folder>-relinked/`), its .blend pointing those images at the same files in this
+game or Mod SDK install; the unpacked copy and the installs are never changed. Registering prefers that copy.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import tempfile
@@ -17,10 +22,12 @@ from pathlib import Path, PurePosixPath
 
 from . import KitError
 
-__all__ = ["DONE", "find_blend", "find_zip", "library_dir", "local_equivalent", "planned_blend", "summarize",
-           "unpack"]
+__all__ = ["DONE", "RELINKED", "finish_relink", "find_blend", "find_zip", "library_dir", "local_equivalent",
+           "planned_blend", "prepare_relink", "register_dir", "relinked_dir", "summarize", "unpack"]
 
 DONE = ".unpacked"            # written last: a folder without it is a half-finished unpack and is redone
+RELINKED = ".relinked"        # the same for a relinked copy
+WORK_FILES = {DONE, RELINKED, "probe.json", "relink.json", "relink-result.json"}   # never copied into a relinked copy
 MAX_UNPACKED = 2 * 1024 ** 3  # the 2026 library is about 360 MB unpacked
 
 
@@ -143,3 +150,46 @@ def summarize(probe: dict, game_dir: Path | None = None, sdk_assets: Path | None
     return {"images": len(images), "packed": sum(1 for i in images if i.get("packed")), "missing": missing,
             "found_locally": found, "materials": len(probe.get("materials", {})),
             "libraries": probe.get("libraries", [])}
+
+
+def relinked_dir(lib: Path) -> Path:
+    """Where the relinked copy of the unpacked library `lib` goes: a sibling folder, in the same cache."""
+    return Path(lib).with_name(Path(lib).name + "-relinked")
+
+
+def register_dir(lib: Path) -> Path:
+    """The folder to register as the asset library: the relinked copy when one is finished, else `lib`."""
+    rel = relinked_dir(lib)
+    return rel if (rel / RELINKED).is_file() else Path(lib)
+
+
+def _link_or_copy(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+
+
+def prepare_relink(lib: Path, blend: Path, found: dict) -> tuple[Path, Path, Path]:
+    """Stage a relinked copy of `lib`: a fresh folder beside it holding every library file but the .blend (hard links
+    when it can) and the map {path in the .blend: local file} the Blender job reads. Returns (stage folder, map file,
+    where the job saves the .blend). Nothing outside the cache is touched."""
+    lib, blend = Path(lib), Path(blend)
+    stage = Path(tempfile.mkdtemp(prefix=f".{relinked_dir(lib).name}-", dir=lib.parent))
+    for f in lib.rglob("*"):
+        if f.is_file() and f != blend and f.name not in WORK_FILES:
+            _link_or_copy(f, stage / f.relative_to(lib))
+    mapping = stage / "relink.json"
+    mapping.write_text(json.dumps(dict(sorted(found.items())), indent=1) + "\n", encoding="utf-8")
+    return stage, mapping, stage / blend.relative_to(lib)
+
+
+def finish_relink(lib: Path, stage: Path) -> Path:
+    """Put a staged copy whose Blender job succeeded in place (replacing an older one) and mark it finished."""
+    final = relinked_dir(lib)
+    (Path(stage) / RELINKED).write_text(f"{Path(lib).name}\n", encoding="utf-8")
+    if final.exists():
+        shutil.rmtree(final)
+    os.replace(stage, final)
+    return final

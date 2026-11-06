@@ -4,6 +4,9 @@
       opens the library read only (never saved) and writes OUT.json: every image (its path, whether it is packed,
       whether the file it points at exists here), linked libraries, and each material's and node group's nodes and
       links, so the preview materials can follow how Keen wires its maps;
+  blender -b --python library_blend.py -- relink LIBRARY.blend MAP.json OUT.blend RESULT.json
+      opens the library, points each image whose path is a key of MAP.json at the local file it maps to, saves the
+      result as OUT.blend (never over LIBRARY.blend) and writes RESULT.json: what was relinked, what is still missing;
   blender -b --python library_blend.py -- register FOLDER NAME
       adds FOLDER as the asset library NAME in the user's Blender preferences (or updates its path) and saves them.
 """
@@ -81,6 +84,36 @@ def probe(blend, out):
     print(f"library probe: {len(images)} images, {sum(i['packed'] for i in images)} packed, {len(missing)} missing")
 
 
+def _missing():
+    out = []
+    for im in bpy.data.images:
+        if im.packed_file is None and im.filepath and not os.path.exists(bpy.path.abspath(im.filepath)):
+            out.append(im.filepath)
+    return out
+
+
+def relink(blend, mapping, out_blend, result):
+    if os.path.abspath(out_blend) == os.path.abspath(blend):
+        raise SystemExit("relink: refusing to save over the library it read")
+    with open(mapping, encoding="utf-8") as f:
+        local = json.load(f)
+    bpy.ops.wm.open_mainfile(filepath=blend, load_ui=False)
+    done = []
+    for im in bpy.data.images:
+        here = local.get(im.filepath)
+        if here and im.packed_file is None and os.path.isfile(here):
+            done.append({"name": im.name, "from": im.filepath, "to": here})
+            im.filepath = here
+    os.makedirs(os.path.dirname(os.path.abspath(out_blend)), exist_ok=True)
+    # relative paths stay as written: the copy sits beside the library at the same depth, with its other files
+    bpy.ops.wm.save_as_mainfile(filepath=out_blend, check_existing=False, relative_remap=False)
+    missing = _missing()
+    with open(result, "w", encoding="utf-8") as f:
+        json.dump({"blend": out_blend, "images": len(bpy.data.images), "relinked": done, "missing": missing}, f,
+                  indent=1)
+    print(f"library relink: {len(done)} images relinked, {len(missing)} still missing -> {out_blend}")
+
+
 def register(folder, name):
     libs = bpy.context.preferences.filepaths.asset_libraries
     lib = next((lib for lib in libs if lib.name == name), None)
@@ -96,10 +129,13 @@ def register(folder, name):
 def main(argv):
     if argv[:1] == ["probe"] and len(argv) == 3:
         probe(argv[1], argv[2])
+    elif argv[:1] == ["relink"] and len(argv) == 5:
+        relink(*argv[1:])
     elif argv[:1] == ["register"] and len(argv) == 3:
         register(argv[1], argv[2])
     else:
-        raise SystemExit("usage: library_blend.py -- probe BLEND OUT.json | register FOLDER NAME")
+        raise SystemExit("usage: library_blend.py -- probe BLEND OUT.json | relink BLEND MAP.json OUT.blend "
+                         "RESULT.json | register FOLDER NAME")
 
 
 if __name__ == "__main__":

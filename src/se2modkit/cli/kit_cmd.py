@@ -1,11 +1,12 @@
-"""`se2mod kit build | fetch | path NAME | library`: the kit assets (Rioku atlas, maker mark) in the user cache, and
-Keen's Blender material library from the Mod SDK."""
+"""`se2mod kit build | fetch | path NAME | library [--check] [--relink] [--register]`: the kit assets (Rioku atlas,
+maker mark) in the user cache, and Keen's Blender material library from the Mod SDK."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,8 +30,13 @@ def _add_args(p: argparse.ArgumentParser) -> None:
                                          "cache and print the folder to register as a Blender asset library")
     lib.add_argument("--check", action="store_true", help="open the library in Blender (queued, read only) and "
                                                           "report the image paths that do not exist here")
-    lib.add_argument("--register", action="store_true", help="add the folder to your Blender preferences as an "
-                                                             "asset library (queued; writes your Blender config)")
+    lib.add_argument("--relink", action="store_true", help="write a copy of the library in the cache whose images "
+                                                           "point at the same files in this game or SDK install "
+                                                           "(queued; the install is never changed), and report what "
+                                                           "stays missing")
+    lib.add_argument("--register", action="store_true", help="add the folder (the relinked copy when there is "
+                                                             "one) to your Blender preferences as an asset library "
+                                                             "(queued; writes your Blender config)")
     lib.add_argument("--name", default=LIBRARY_NAME, help=f"asset library name (default {LIBRARY_NAME!r})")
     lib.add_argument("--print-only", action="store_true", help="print what would be unpacked and the queue "
                                                                "commands; change nothing")
@@ -52,6 +58,52 @@ def _queue(env, argv: list[str], *, name: str, load: str, print_only: bool) -> i
     return code
 
 
+def _blender_job(env, script: Path, *job: str, factory: bool = True) -> list[str]:
+    return [str(env.blender), "-b", *(["--factory-startup"] if factory else []), "--python-exit-code", "1",
+            "--python", str(script), "--", *job]
+
+
+def _probe(args, env, L, script, lib, blend, *, force: bool) -> tuple[int, dict | None]:
+    """Run the read-only probe (or reuse one newer than the .blend unless `force`): (exit code, summary or None)."""
+    out = lib / "probe.json"
+    fresh = out.is_file() and blend.is_file() and out.stat().st_mtime >= blend.stat().st_mtime
+    if force or not fresh:
+        rc = _queue(env, _blender_job(env, script, "probe", str(blend), str(out)), name="kit library check",
+                    load="medium", print_only=args.print_only)
+        if rc or args.print_only:
+            return rc, None
+    return 0, L.summarize(json.loads(out.read_text(encoding="utf-8")), getattr(env, "game_dir", None),
+                          getattr(env, "sdk_assets", None))
+
+
+def _relink(args, env, L, script, lib, blend, s) -> int:
+    """Write the relinked copy beside `lib` (queued Blender job), then say what stayed missing."""
+    if args.print_only:
+        final = L.relinked_dir(lib)
+        _queue(env, _blender_job(env, script, "relink", str(blend), str(final / "relink.json"),
+                                 str(final / blend.relative_to(lib)), str(final / "relink-result.json")),
+               name="kit library relink", load="medium", print_only=True)
+        return 0
+    stage, mapping, out_blend = L.prepare_relink(lib, blend, s["found_locally"])
+    try:
+        result = stage / "relink-result.json"
+        rc = _queue(env, _blender_job(env, script, "relink", str(blend), str(mapping), str(out_blend), str(result)),
+                    name="kit library relink", load="medium", print_only=False)
+        if rc:
+            return rc
+        r = json.loads(result.read_text(encoding="utf-8"))
+        final = L.finish_relink(lib, stage)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage, ignore_errors=True)
+    print(f"relinked: {final}")
+    print(f"{len(r['relinked'])} of {r['images']} images now point at this game or SDK install; "
+          f"{len(r['missing'])} still missing:")
+    for path in r["missing"]:
+        print(f"  missing: {path}")
+    return 0
+
+
 def _library(args, env) -> int:
     from ..env.core import require
     from ..kit import library as L
@@ -62,21 +114,17 @@ def _library(args, env) -> int:
     else:
         lib, new = L.unpack(zpath, env.cache_dir)
         print(f"{'unpacked' if new else 'library'}: {lib}")
-    if not (args.check or args.register):
-        print(f"register this folder as a Blender asset library: {lib}  (or run `se2mod kit library --register`)")
+    if not (args.check or args.relink or args.register):
+        print(f"register this folder as a Blender asset library: {L.register_dir(lib)}  "
+              "(or run `se2mod kit library --register`)")
         return 0
     require(env, "blender")
     script = Path(L.__file__).with_name("library_blend.py")
+    blend = L.planned_blend(zpath, lib)
     rc = 0
-    if args.check:
-        blend = L.planned_blend(zpath, lib)
-        out = lib / "probe.json"
-        argv = [str(env.blender), "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(script),
-                "--", "probe", str(blend), str(out)]
-        rc = _queue(env, argv, name="kit library check", load="medium", print_only=args.print_only)
-        if rc == 0 and not args.print_only:
-            s = L.summarize(json.loads(out.read_text(encoding="utf-8")), getattr(env, "game_dir", None),
-                            getattr(env, "sdk_assets", None))
+    if args.check or args.relink:
+        rc, s = _probe(args, env, L, script, lib, blend, force=args.check)
+        if s is not None and args.check:
             print(f"{s['materials']} materials, {s['images']} images: {s['packed']} packed, "
                   f"{len(s['missing'])} pointing at files that are not there")
             for i in s["missing"]:
@@ -84,11 +132,13 @@ def _library(args, env) -> int:
                 print(f"  missing: {i['filepath']}" + (f"\n    here: {here}" if here else ""))
             if s["missing"]:
                 print(f"{len(s['found_locally'])} of the missing images exist in this game or SDK install "
-                      "(as DDS or PNG); the library's materials show them once relinked.")
+                      "(as DDS or PNG); `se2mod kit library --relink` points a copy of the library at them.")
+        if rc == 0 and args.relink:
+            rc = _relink(args, env, L, script, lib, blend, s)
     if args.register and rc == 0:
-        argv = [str(env.blender), "-b", "--python-exit-code", "1", "--python", str(script), "--", "register",
-                str(lib), args.name]
-        rc = _queue(env, argv, name="kit library register", load="light", print_only=args.print_only)
+        folder = L.relinked_dir(lib) if args.relink and args.print_only else L.register_dir(lib)
+        rc = _queue(env, _blender_job(env, script, "register", str(folder), args.name, factory=False),
+                    name="kit library register", load="light", print_only=args.print_only)
     return rc
 
 
