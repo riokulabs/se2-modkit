@@ -215,8 +215,8 @@ def parse_targets(markdown: str, source: str = "targets") -> list[dict]:
     """Every [[target]] in the markdown's ```targets fenced blocks (TOML): {"name", "a": (glob, axis), "b": (glob,
     axis) or None, "value", "tol"}. `a` and `b` are `GLOB.AXIS` (axis x, y or z of the matched parts' union box);
     without `b` the value is a length in mm, with it the ratio a/b. An optional `collections` (a list of name
-    patterns) limits a target to the parts of matching collections, so one file can hold targets for several block
-    families; a run with no part in a matching collection skips that target."""
+    patterns) limits a target to runs that describe a matching collection, so one file can hold targets for several
+    block families; any other run skips that target."""
     import tomllib
     out = []
     for n, m in enumerate(_FENCE.finditer(markdown), 1):
@@ -261,18 +261,25 @@ def _measure(ref, parts):
     return max(p["hi"][k] for p in hit) - min(p["lo"][k] for p in hit), len(hit)
 
 
-def check_targets(targets: list[dict], parts: list[dict]) -> list[dict]:
-    """[{"name", "ok", "measured", "value", "tol", "why"}]: a length in mm, or a ratio when the target has `b`. A target
-    with `collections` is measured on the parts of matching collections only, and left out when there are none."""
+def check_targets(targets: list[dict], parts: list[dict], collections=None) -> list[dict]:
+    """[{"name", "ok", "measured", "value", "tol", "why"}]: a length in mm, or a ratio when the target has `b`.
+    `collections` are the collections the run describes (each a block, nested collections included). A target with
+    `collections` applies only when one of them matches, and is then measured on all the parts; it is left out
+    otherwise. Without run collections (the whole scene), a part's own collection is matched instead."""
+    run = list(collections or [])
     out = []
     for t in targets:
-        colls = t.get("collections") or []
-        if colls:
-            mine = [p for p in parts if any(fnmatch.fnmatchcase(p.get("collection", ""), c) for c in colls)]
+        pats = t.get("collections") or []
+        if not pats:
+            mine = parts
+        elif run:
+            if not any(fnmatch.fnmatchcase(c, pat) for c in run for pat in pats):
+                continue
+            mine = parts
+        else:
+            mine = [p for p in parts if any(fnmatch.fnmatchcase(p.get("collection", ""), pat) for pat in pats)]
             if not mine:
                 continue
-        else:
-            mine = parts
         r = {"name": t["name"], "value": t["value"], "tol": t["tol"], "measured": None, "ok": False, "why": ""}
         a, na = _measure(t["a"], mine)
         b, nb = _measure(t["b"], mine) if t["b"] else (None, 0)
@@ -360,7 +367,7 @@ def finish(body: dict, *, envelope=None, targets=None, mid_from="bbox center", *
         block["envelope_m"], block["fill"] = env, fill
     rep = {**extra, "block": block, "parts": parts, "floating": body["floating"], "overlaps": body["overlaps"],
            "mirror_errors": body["mirror_errors"]}
-    rep["targets"] = check_targets(targets, parts) if targets else []
+    rep["targets"] = check_targets(targets, parts, extra.get("collections")) if targets else []
     return rep
 
 
