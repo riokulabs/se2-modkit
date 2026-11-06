@@ -120,7 +120,10 @@ def _shoot(shot, name, loc, tgt, lens, ortho, out):
     cam = shot.camera(loc, tgt, lens, ortho=ortho)
     shot.name = name
     path = shot.render()
-    shots.save_camera(path, [list(r) for r in cam.matrix_world], cam.data.lens,
+    # from the camera's own location and rotation: the look scene is not the active one, so matrix_world is never
+    # evaluated and would save as the identity (a later --before round would then render from inside the block)
+    m = Matrix.Translation(cam.location) @ cam.rotation_euler.to_matrix().to_4x4()
+    shots.save_camera(path, [list(r) for r in m], cam.data.lens,
                       cam.data.ortho_scale if cam.data.type == "ORTHO" else None)
     return cam, path
 
