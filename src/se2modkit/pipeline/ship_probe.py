@@ -25,7 +25,7 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
-from ..describe import GEOMETRY, walk_shipping
+from ..describe import GEOMETRY, ship_reason, walk_shipping
 from . import fracture_mesh as FM
 
 __all__ = ["GEOMETRY", "PALETTE", "Sources", "capture_sources", "render_exploded", "shipping_set", "zone_bounds"]
@@ -52,24 +52,26 @@ class Sources:
         loose = [o for o in getattr(dst, "objects", None) or () if o is not None]
         if loose:
             self.entries.append({"blend": blend, "collection": "(objects)",
-                                 "objects": [_object(o, o.name, False, False, set()) for o in loose]})
+                                 "objects": [_object(o) for o in loose]})
 
     def report(self) -> list[dict]:
         return list(self.entries)
 
 
-def _object(o, path, coll_hidden_v, coll_hidden_r, cutters) -> dict:
-    why = ("render-hidden collection" if coll_hidden_r else "render-hidden" if o.hide_render else
-           "boolean cutter" if o.name in cutters else None if o.type in GEOMETRY else f"not geometry ({o.type})")
+def _entry(o, path, why, viewport_hidden) -> dict:
     return {"name": o.name, "path": path, "type": o.type, "ships": why is None, "why": why,
-            "viewport_hidden": bool(coll_hidden_v or o.hide_viewport)}
+            "viewport_hidden": bool(viewport_hidden)}
+
+
+def _object(o) -> dict:
+    """A loose loaded object (in no collection), by the same rule as everything else (`describe.ship_reason`)."""
+    return _entry(o, o.name, ship_reason(o), o.hide_viewport)
 
 
 def _objects(top) -> list[dict]:
     """Every object under the loaded collection `top`, as saved (see the module doc for what ships; the rule itself is
-    `describe.walk_shipping`, shared with `se2mod describe`)."""
-    return [{"name": o.name, "path": path, "type": o.type, "ships": why is None, "why": why, "viewport_hidden": hv}
-            for o, path, _coll, why, hv in walk_shipping(top)]
+    `describe.ship_reason` through `describe.walk_shipping`, shared with `se2mod describe`)."""
+    return [_entry(o, path, why, hv) for o, path, _coll, why, hv in walk_shipping(top)]
 
 
 class _Load:
