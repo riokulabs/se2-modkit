@@ -62,6 +62,7 @@ def _load_commands() -> None:
         report_cmd,
         review_cmd,
         sdk_cmd,
+        ship_cmd,
         snapshot_cmd,
         style_cmd,
         testrun_cmd,

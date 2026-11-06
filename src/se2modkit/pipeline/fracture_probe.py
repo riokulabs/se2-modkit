@@ -64,9 +64,10 @@ def _remove(objs):
             bpy.data.objects.remove(o)
 
 
-def check_block(hooks, spec, lods, boxes, coll, cell_groups=None) -> dict:
+def check_block(hooks, spec, lods, boxes, coll, cell_groups=None, on_cut=None) -> dict:
     """The block's fracture check report (the format in `fracture_check`). lods: [(collection, objects)] as built;
-    boxes: its collision dict; coll: a scratch collection (left empty)."""
+    boxes: its collision dict; coll: a scratch collection (left empty). on_cut(plan, whole, caps, shares) is called
+    with the cut LOD0 and the zone shares before the cut is removed (the ship check's preview)."""
     pre = f"{spec.name}_LOD0_"
     objs = lods[0][1]
     rep = {"block": spec.name, "family": spec.family, "status": "checked", "error": None, "cell_groups": cell_groups,
@@ -86,12 +87,14 @@ def check_block(hooks, spec, lods, boxes, coll, cell_groups=None) -> dict:
         made = [whole, *caps.values()]
         rep["tris"] = FM.lod_tris((whole, caps))
         XP.shape_hulls(hooks, spec, plan, (whole, caps), XP._size([o for o in objs if o.type == "MESH"]))
+        share = FR.health_shares({z.id: z.shape["volume"] for z in plan.zones}, set(plan.critical()))
+        if on_cut is not None:
+            on_cut(plan, whole, caps, share)
     except (FR.FractureError, RuntimeError) as e:
         rep.update(status="error", error=str(e))
         return rep
     finally:
         _remove(made)
-    share = FR.health_shares({z.id: z.shape["volume"] for z in plan.zones}, set(plan.critical()))
     rep["zones"] = [{"id": z.id, "label": z.label, "critical": z.critical, "share": share[z.id],
                      "lifted": bool(getattr(z, "min_share", False))} for z in plan.zones]
     clear = seam_clearance(plan, objs, pre)
