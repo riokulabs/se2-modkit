@@ -90,3 +90,19 @@ def test_build_assume_game_closed_overrides(run, tmp_path, monkeypatch):
     monkeypatch.setattr(procs, "game_running", lambda **_: False)
     code, _, err = run("build", str(d), "--assume-game-closed")
     assert code == 1 and "Mod SDK" in err  # got past the guard to the missing SDK
+
+
+def test_build_refuses_a_copied_game_texture_before_the_builder(run, tmp_path, monkeypatch):
+    from se2modkit.validate import vanilla_textures
+
+    d = _mod(tmp_path)
+    vanilla = tmp_path / "vanilla"
+    (vanilla / "BlockMaterials").mkdir(parents=True)
+    (vanilla / "BlockMaterials" / "Steel_cm.dds").write_bytes(b"D" * 4096)
+    (d / "Assets").mkdir()
+    (d / "Assets" / "Panel.dds").write_bytes(b"D" * 4096)
+    monkeypatch.setattr(vanilla_textures, "vanilla_roots", lambda env: [vanilla])
+    monkeypatch.setattr(sdkbuild, "build", lambda *a, **k: pytest.fail("the builder must not run"))
+    code, _, err = run("build", str(d))
+    assert code == sdkbuild.EXIT_VANILLA_TEXTURE
+    assert "Assets/Panel.dds" in err and "Steel_cm.dds" in err
