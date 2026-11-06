@@ -23,6 +23,19 @@ try:   # Blender only; the idle logic below imports without it
 except ImportError:   # pragma: no cover - outside Blender
     bpy = None
 
+def describe_scene(collections=None, envelope=None, targets=None) -> dict:
+    """The open scene as numbers (`se2modkit.describe.describe_scene`; read only): every part's size, center, nearest
+    neighbor, contacts and mirror partner. `se2modkit.describe.text(report)` gives the compact text. To call it from
+    a live session without re-running this startup file, import `se2modkit.describe` itself."""
+    try:
+        from se2modkit import describe as D
+    except ImportError:   # run as a startup file (--python): the package is beside this file
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from se2modkit import describe as D
+    return D.describe_scene(collections, envelope=envelope, targets=targets)
+
+
 RECOVERY_DIR = Path(os.environ.get("SE2_LIVE_RECOVERY") or Path.home() / ".cache" / "se2modkit" / "live-blender")
 
 

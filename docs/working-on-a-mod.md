@@ -67,6 +67,41 @@ zone's box and a legend of names and health shares. It writes only `Source/Model
 and `ship.json`; one summary line per block, then PASS or FAIL. Exit 0 pass, 1 a FAIL line, 2 the run failed.
 `--check-ship --ship-out=DIR` on the build script does the Blender part.
 
+### A model as numbers
+
+`se2mod describe FILE.blend [--collection C ...] [--mod MOD] [--targets FILE.md] [--envelope X,Y,Z] [--json OUT]`
+lists a model as numbers instead of pictures: geometry is easier to judge, by a person or a script, from sizes and
+gaps than from a render. It runs one read-only headless Blender job through the queue (a light job; it renders nothing
+and never saves the file). The parts are what a build would ship (render visibility, no boolean cutters), from each
+`--collection` taken as the block, or from the whole scene. Each part gets a stable number (`#1`, `#2`, ... sorted by
+collection, then name) and one line: role (hull, port, light, glass, decal, collider, LOD, dummy or part, guessed from
+the name), size and center in mm, center in 0.25 m grid cells from the origin, nearest part and gap (measured on the
+meshes when the boxes are within 50 mm; negative is the deepest point of one closed part inside another), the parts it
+touches (gap of 0.5 mm or less), its mirror partner across the X, Y or Z mid-plane with the error in mm, and the
+planes it is symmetric about itself. Then come the FLOATING parts (touching nothing), the OVERLAP pairs and the
+MIRROR-ERROR pairs. `--envelope` (meters) adds how much of the block the model fills and puts the mirror planes at the
+block origin instead of the model's box center. `--json OUT` writes everything, and `--mod` finds a relative file
+under the mod's model source.
+
+`--targets FILE.md` checks proportions. Every fenced block with the info string `targets` in that markdown file is
+TOML:
+
+```targets
+[[target]]
+name = "nozzle to body length"
+a = "Nozzle*.z"   # parts matching the name pattern, then the size along x, y or z of their joint box
+b = "Body.z"      # optional: the value checked is then a / b
+value = 0.6       # in mm when there is no b
+tol = 0.05
+```
+
+Each target prints PASS or FAIL with what it measured; a pattern that matches no part is a FAIL. Exit 0 when every
+target passes, 1 on a FAIL, 2 when the run itself fails (a missing file or collection, a malformed targets block).
+
+The same summary is available in a running Blender: `se2modkit.describe.describe_scene(collections=None,
+envelope=None, targets=None)` returns the report as a dict, and `se2modkit.describe.text(report)` gives the lines
+above. That module imports nothing outside Blender's own Python.
+
 Every render path follows one shot standard (`src/se2modkit/preview/shots.py`): eleven view names (`front`, `back`,
 `left`, `right`, `top`, `bottom`, `3q_front`, `3q_back`, `3q_low`, `mount`, `inside`; older names such as `3q_rear`,
 in a camera or a file name, still count as their view), files named `<block>_<stage>_r<N>_<view>[_<extra>]`, a

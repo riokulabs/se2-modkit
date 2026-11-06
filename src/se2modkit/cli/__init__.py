@@ -43,6 +43,7 @@ def _load_commands() -> None:
         build_cmd,
         defs_cmd,
         deps_cmd,
+        describe_cmd,
         doctor,
         env_cmd,
         facts_cmd,
