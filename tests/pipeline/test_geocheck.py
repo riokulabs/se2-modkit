@@ -242,3 +242,18 @@ def test_a_check_that_raises_becomes_a_failure():
                                 "detail": "the geometry checks stopped: ValueError: degenerate mesh"}]
     a = box("a", (0, 0, 0), (1, 1, 1))
     assert GC.guarded(lambda: GC.run([a])).tris == 12
+
+
+def test_a_part_with_no_faces_is_listed_and_left_out():
+    """An imported FBX can carry a mesh with no vertices at all (the vanilla 250 battery has one); the checks used to
+    stop on it with a numpy zero-size error."""
+    plate = box("plate", (-1, -1, 0), (1, 1, 0.1))
+    rod = cyl("rod", (0, 0, -0.5), (0, 0, 0.6), 0.05)
+    nothing = GC.Part("Cube.032", np.empty((0, 3)), np.empty((0, 3), int))
+    edges_only = GC.Part("wire", [(0, 0, 0), (1, 0, 0)], np.empty((0, 3), int))
+    report = GC.run([plate, nothing, rod, edges_only])
+    assert not _checks(report, "error")
+    assert _checks(report, "empty")[0]["parts"] == ["Cube.032", "wire"]
+    assert _checks(report, "poke_through")[0]["parts"] == ["rod", "plate"]   # the rest is still checked
+    assert report.parts == 4 and report.tris == len(plate.tris) + len(rod.tris)
+    assert GC.guarded(lambda: GC.run([nothing])).ok

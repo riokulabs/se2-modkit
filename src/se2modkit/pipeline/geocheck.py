@@ -15,6 +15,8 @@ the part's `se2_role` / `se2_axis` / `se2_point` / `se2_links` properties or, fa
   tris          more triangles than the kit's budget
   untagged      parts with no role (a warning: they still count for the load path, as structure)
   no_mount      no part is tagged as the mount (a warning: the load path can't be checked)
+  empty         parts with no faces (an empty or edges-only mesh, as some FBX exports carry): a warning; they
+                are left out of every other check
   error         the checks themselves stopped (`guarded`): the set fails rather than going out unchecked
 """
 
@@ -346,6 +348,10 @@ def _box_uv(parts, report):
 def run(parts, *, cells=None, tris_budget: int | None = None) -> Report:
     parts = list(parts)
     report = Report(tris=int(sum(len(p.tris) for p in parts)), parts=len(parts))
+    empty = [p.name for p in parts if not len(p.tris)]
+    if empty:   # nothing to measure: every check below needs at least one face per part
+        report.add(False, "empty", empty, f"{len(empty)} part(s) have no faces; they are left out of the checks")
+        parts = [p for p in parts if len(p.tris)]
     untagged = [p.name for p in parts if p.role is None]
     if untagged:
         report.add(False, "untagged", untagged, f"{len(untagged)} part(s) have no role; they count as structure")
