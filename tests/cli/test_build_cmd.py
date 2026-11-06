@@ -106,3 +106,13 @@ def test_build_refuses_a_copied_game_texture_before_the_builder(run, tmp_path, m
     code, _, err = run("build", str(d))
     assert code == sdkbuild.EXIT_VANILLA_TEXTURE
     assert "Assets/Panel.dds" in err and "Steel_cm.dds" in err
+
+
+def test_build_warns_when_no_game_textures_can_be_checked(run, tmp_path, monkeypatch):
+    from se2modkit.validate import vanilla_textures
+
+    d = _mod(tmp_path)
+    monkeypatch.setattr(vanilla_textures, "vanilla_roots", lambda env: [])
+    monkeypatch.setattr(sdkbuild, "build", lambda *a, **k: 0)
+    code, _, err = run("build", str(d))
+    assert code == 0 and "were not checked" in err

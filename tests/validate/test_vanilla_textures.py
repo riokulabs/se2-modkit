@@ -4,6 +4,8 @@ import json
 import os
 from types import SimpleNamespace
 
+import pytest
+
 from se2modkit.validate import vanilla_textures as vt
 
 
@@ -81,3 +83,29 @@ def test_refusal_names_each_copy(tmp_path):
     msg = vt.refusal([(copy, tex)], mod)
     assert "Assets/t.dds" in msg and "BlockMaterials/Steel_cm.dds" in msg and "GUID" in msg
     assert vt.refusal([], mod) == ""
+
+
+def test_a_symlink_to_a_game_texture_is_a_copy(tmp_path):
+    vanilla, tex, mod = _tree(tmp_path)
+    link = mod / "Assets" / "Panel.dds"
+    link.parent.mkdir(parents=True)
+    try:
+        link.symlink_to(tex)
+    except OSError:  # Windows without the symlink privilege
+        pytest.skip("cannot create a symlink here")
+    assert vt.find_copies(vt.image_files(mod), [vanilla]) == [(link, tex)]
+
+
+def test_a_mod_file_that_vanishes_mid_scan_is_skipped(tmp_path, monkeypatch):
+    vanilla, tex, mod = _tree(tmp_path)
+    gone = _write(mod / "gone.dds", tex.read_bytes())
+    files = vt.image_files(mod)
+    real = vt._sha256
+
+    def flaky(path):
+        if path == gone:
+            raise FileNotFoundError(path)
+        return real(path)
+
+    monkeypatch.setattr(vt, "_sha256", flaky)
+    assert vt.find_copies(files, [vanilla]) == []

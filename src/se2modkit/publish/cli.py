@@ -62,7 +62,10 @@ def _refuse_vanilla_textures(stage_dir: Path, env: SE2Env | None) -> None:
     """Refuse a staged upload holding an exact copy of a game texture."""
     if env is None:
         return
-    copies = vanilla_textures.find_copies(vanilla_textures.image_files(stage_dir), vanilla_textures.vanilla_roots(env),
+    roots = vanilla_textures.vanilla_roots(env)
+    if not roots:
+        print(vanilla_textures.NO_ROOTS, file=sys.stderr)
+    copies = vanilla_textures.find_copies(vanilla_textures.image_files(stage_dir), roots,
                                           env.cache_dir / vanilla_textures.CACHE_NAME)
     if copies:
         raise Refusal(vanilla_textures.refusal(copies, stage_dir))

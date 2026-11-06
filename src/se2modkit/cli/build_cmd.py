@@ -28,7 +28,10 @@ def _add_args(p) -> None:
           add_args=_add_args)
 def cmd_build(args, env) -> int:
     mod = _resolve(env, args.mod)
-    copies = vanilla_textures.find_copies(vanilla_textures.image_files(mod), vanilla_textures.vanilla_roots(env),
+    roots = vanilla_textures.vanilla_roots(env)
+    if not roots:
+        print(vanilla_textures.NO_ROOTS, file=sys.stderr)
+    copies = vanilla_textures.find_copies(vanilla_textures.image_files(mod), roots,
                                           env.cache_dir / vanilla_textures.CACHE_NAME)
     if copies:
         print(vanilla_textures.refusal(copies, mod), file=sys.stderr)

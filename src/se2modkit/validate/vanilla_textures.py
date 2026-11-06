@@ -8,10 +8,12 @@ The vanilla folders hold tens of gigabytes of images, so nothing is hashed up fr
 collected first, the vanilla folders are walked by size only (a stat per file), and only vanilla files with a size
 some mod file also has are hashed. Those hashes are cached by path, size and modification time.
 
-  image_files(root)                       every image under root, skipping .git, preview folders and caches
+  image_files(root)                       every image under root, skipping .git, preview folders and caches; a
+                                          symlinked image counts (the build copies what it points at)
   vanilla_roots(env)                      the game's and the SDK's GameData/Vanilla folders that exist
   find_copies(files, roots, cache=None)   [(mod file, vanilla file)] for every exact copy
   refusal(copies, base)                   the message to print, or "" when there are none
+  NO_ROOTS                                the warning to print when no vanilla folder was found
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
@@ -26,18 +29,20 @@ __all__ = ["IMAGE_EXT", "find_copies", "image_files", "refusal", "vanilla_roots"
 
 IMAGE_EXT = frozenset({".png", ".dds", ".tga", ".tif", ".tiff", ".jpg", ".jpeg", ".exr", ".bmp", ".hdr"})
 SKIP_DIRS = frozenset({".git", ".venv", "__pycache__", "node_modules", "preview", "previews"})
+NO_ROOTS = "warning: no game or Mod SDK GameData/Vanilla folder found; game textures were not checked"
 MIN_BYTES = 256  # smaller files are too generic to call a copy (a 1x1 swatch)
 CACHE_NAME = "vanilla-texture-hashes.json"
 
 
 def image_files(root: Path) -> list[Path]:
-    """Every image file under `root` (by extension), not following symlinks, skipping SKIP_DIRS."""
+    """Every image file under `root` (by extension), skipping SKIP_DIRS. Symlinked folders are not entered; a symlinked
+    file is kept, since its bytes are what a build copies."""
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d.lower() not in SKIP_DIRS]
         for name in filenames:
             p = Path(dirpath, name)
-            if p.suffix.lower() in IMAGE_EXT and not p.is_symlink():
+            if p.suffix.lower() in IMAGE_EXT and p.is_file():
                 out.append(p)
     return sorted(out)
 
@@ -90,8 +95,9 @@ def _save(cache: Path | None, data: dict) -> None:
         return
     try:
         cache.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cache.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data), encoding="utf-8")
+        fd, tmp = tempfile.mkstemp(dir=cache.parent, prefix=cache.name, suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f)
         os.replace(tmp, cache)
     except OSError:
         pass  # the cache only saves time
@@ -127,7 +133,10 @@ def find_copies(files: Iterable[Path], roots: Iterable[Path], cache: Path | None
             fresh[key] = stamp + [digest]
             for f in by_size[st.st_size]:
                 if f not in mod_hash:
-                    mod_hash[f] = _sha256(f)
+                    try:
+                        mod_hash[f] = _sha256(f)
+                    except OSError:
+                        mod_hash[f] = ""  # gone or unreadable since it was listed
                 if mod_hash[f] == digest:
                     copies.append((f, vpath))
     if fresh:
