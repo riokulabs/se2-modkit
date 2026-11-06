@@ -1,4 +1,6 @@
-"""`se2mod build MOD [--dry-run] [-v] [--lock-timeout S]`: compile a mod's Assets into Content with the Mod SDK builder."""
+"""`se2mod build MOD [--dry-run] [-v] [--lock-timeout S]`: compile a mod's Assets into Content with the Mod SDK builder.
+
+A mod that carries an exact copy of a game texture is refused before the builder runs (exit 6)."""
 
 from __future__ import annotations
 
@@ -7,6 +9,7 @@ import sys
 from .. import sdkbuild
 from ..env import standin
 from ..env.core import EnvError
+from ..validate import vanilla_textures
 from . import register
 from .mods_cmd import _resolve
 
@@ -25,6 +28,14 @@ def _add_args(p) -> None:
           add_args=_add_args)
 def cmd_build(args, env) -> int:
     mod = _resolve(env, args.mod)
+    roots = vanilla_textures.vanilla_roots(env)
+    if not roots:
+        print(vanilla_textures.NO_ROOTS, file=sys.stderr)
+    copies = vanilla_textures.find_copies(vanilla_textures.image_files(mod), roots,
+                                          env.cache_dir / vanilla_textures.CACHE_NAME)
+    if copies:
+        print(vanilla_textures.refusal(copies, mod), file=sys.stderr)
+        return sdkbuild.EXIT_VANILLA_TEXTURE
     if env.game_dir is not None and env.sdk_dir is not None:  # the standin the builder looks for first
         try:
             dest, rebuilt = standin.ensure(env)

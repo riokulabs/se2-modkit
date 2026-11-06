@@ -42,6 +42,7 @@ project.
 | `texconv` hangs under Wine | Modkit never runs `texconv.exe` under Wine. A native `texconv` on `PATH` is used if present, with a 60 s limit; otherwise textures are written as PNG only and the command says so |
 | Building while the game runs corrupts or locks files | `se2mod build` and mounting commands refuse while the game is running, **and** when the process list cannot be read (fail closed). `--assume-game-closed` overrides the second case only |
 | Two SDK builds at once | Every `se2mod build` holds one lock (`sdk-build.lock` in the modkit cache folder). A second build waits up to `--lock-timeout` seconds (default 3600) and exits 5 if the lock is still held; after waiting it checks again that the game is closed |
+| A copied game texture | `se2mod build` refuses (exit 6) when an image in the mod is a byte-for-byte copy of one under the game's or the SDK's `GameData/Vanilla`; only files whose size matches a mod image are hashed, and those hashes are cached |
 | Interrupted SDK build | The project file, `Scripts/` and `Content.pruned/` are restored on failure and on Ctrl-C |
 | Hung Wine tools | Kill tools you started (`wineserver -k` for that prefix); do not leave them running |
 | Uptime bug of the native game | The native game can crash on item drops after about 10 days of uptime; restart it |

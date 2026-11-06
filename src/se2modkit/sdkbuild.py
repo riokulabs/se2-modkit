@@ -37,6 +37,7 @@ BUILDER_EXE = "VRage.ContentPipeline.Builder.exe"
 EXIT_STALE = 3
 EXIT_GAME_RUNNING = 4
 EXIT_LOCKED = 5
+EXIT_VANILLA_TEXTURE = 6
 SDK_LOCK_NAME = "sdk-build.lock"
 SDK_LOCK_TIMEOUT = 3600.0  # seconds a build waits for another session's build
 _META = "VRage:Keen.VRage.ContentPipeline.Metafiles.MetaData"

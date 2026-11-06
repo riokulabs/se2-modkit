@@ -15,6 +15,7 @@ from .. import progress
 from ..env.config import ConfigError
 from ..env.core import EnvError, SE2Env, discover_env
 from ..release import publish_check
+from ..validate import vanilla_textures
 from . import __version__, gitutil, limits, release
 from .hostenv import GAME_APP_ID, build_env, find_libsteam_api, hub_bundles
 from .project import Refusal, check_canonical, load_config, read_ledger, read_tracked, select_mod
@@ -57,6 +58,19 @@ def work_dir(args, p) -> Path:
     return (base / (f"{p.repo.name}--{p.name}" if p.multi else p.folder.name)).resolve()
 
 
+def _refuse_vanilla_textures(stage_dir: Path, env: SE2Env | None) -> None:
+    """Refuse a staged upload holding an exact copy of a game texture."""
+    if env is None:
+        return
+    roots = vanilla_textures.vanilla_roots(env)
+    if not roots:
+        print(vanilla_textures.NO_ROOTS, file=sys.stderr)
+    copies = vanilla_textures.find_copies(vanilla_textures.image_files(stage_dir), roots,
+                                          env.cache_dir / vanilla_textures.CACHE_NAME)
+    if copies:
+        raise Refusal(vanilla_textures.refusal(copies, stage_dir))
+
+
 def do_stage(args, p, cfg, env) -> StageResult:
     wd = work_dir(args, p)
     info = wd / "stage-info.json"
@@ -73,6 +87,7 @@ def do_stage(args, p, cfg, env) -> StageResult:
         man, errors = check_tree(st_dir, p, Limits(), {s: "git:HEAD" for s in scripts})
         if errors:
             raise Refusal("staged content failed the safety checks:\n  " + "\n  ".join(errors))
+        _refuse_vanilla_textures(st_dir, env)
         return StageResult(st_dir, man, scripts, head, warns + [f"reused stage from {meta.get('time')}"],
                            scratch=wd / "src" / p.folder.name)
     st = stage(p, build_env(env), wd, read_tracked(p, cfg.thumbnail), sandbox=not args.no_sandbox,
@@ -80,6 +95,7 @@ def do_stage(args, p, cfg, env) -> StageResult:
     import datetime as dt
     info.write_text(json.dumps({"head": st.head, "time": dt.datetime.now().isoformat(timespec="seconds"),
                                 "sandbox": not args.no_sandbox}) + "\n")
+    _refuse_vanilla_textures(st.stage_dir, env)
     return st
 
 

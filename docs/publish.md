@@ -172,6 +172,9 @@ run lists what was dropped. `--change-note-file` overrides (`.md` is converted, 
 * **Dry run by default.** It prints every Steam call it would make with its values and loads nothing from Steam.
 * **Real upload** needs `--i-have-user-approval`, an interactive terminal, the full manifest listing, and the mod
   name typed back. It also refuses while SE2 (`Modern.bin`/`SpaceEngineers2.exe`) or the HUB/Editor is running.
+* **No game textures.** A staged file whose bytes equal any image under the game's or the Mod SDK's
+  `GameData/Vanilla` folder is refused, whatever its name. `se2mod build` runs the same check on the mod folder
+  before the builder (exit 6). Reference a vanilla material by its GUID instead of copying its texture.
 * **Release build required.** A mod that builds its models through se2modkit (a `[tool.se2modkit]` project with a
   model build script or model files, whatever the script is named) publishes only models from a release build
   (`se2mod build-models MOD --release`). Its stamp must be this mod's and name the commit HEAD points at; the tree
