@@ -17,7 +17,8 @@ from pathlib import Path, PurePosixPath
 
 from . import KitError
 
-__all__ = ["DONE", "find_blend", "find_zip", "library_dir", "local_equivalent", "summarize", "unpack"]
+__all__ = ["DONE", "find_blend", "find_zip", "library_dir", "local_equivalent", "planned_blend", "summarize",
+           "unpack"]
 
 DONE = ".unpacked"            # written last: a folder without it is a half-finished unpack and is redone
 MAX_UNPACKED = 2 * 1024 ** 3  # the 2026 library is about 360 MB unpacked
@@ -101,6 +102,21 @@ def find_blend(lib: Path) -> Path:
     if not blends:
         raise KitError(f"There is no .blend in {lib}.")
     return blends[0]
+
+
+def planned_blend(zpath: Path, lib: Path) -> Path:
+    """Where the library's .blend is (unpacked) or will be (read from the zip's directory, nothing extracted)."""
+    if (Path(lib) / DONE).is_file():
+        return find_blend(lib)
+    try:
+        with zipfile.ZipFile(zpath) as z:
+            blends = sorted((i for i in _safe_members(z) if i.filename.lower().endswith(".blend")),
+                            key=lambda i: i.file_size, reverse=True)
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError) as e:
+        raise KitError(f"{zpath} is not a readable zip ({e}).") from None
+    if not blends:
+        raise KitError(f"There is no .blend in {zpath}.")
+    return Path(lib).joinpath(*PurePosixPath(blends[0].filename).parts)
 
 
 def local_equivalent(path: str, game_dir: Path | None, sdk_assets: Path | None) -> Path | None:

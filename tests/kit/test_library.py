@@ -115,3 +115,11 @@ def test_command_without_an_sdk_fails_plainly(_isolated, tmp_path, capsys):
     empty.mkdir()
     assert cli.main(["kit", "--sdk", str(empty), "library"]) == 1
     assert "no material library zip" in capsys.readouterr().err
+
+
+def test_print_only_unpacks_nothing(_isolated, tmp_path, capsys):
+    sdk = _sdk(tmp_path)
+    assert cli.main(["kit", "--sdk", str(sdk), "library", "--check", "--print-only"]) == 0
+    out = capsys.readouterr().out
+    assert "would unpack" in out and "Lib.blend" in out and "se2mod queue submit" in out
+    assert not (tmp_path / "xdg").exists() or not list((tmp_path / "xdg").rglob("blender-library"))

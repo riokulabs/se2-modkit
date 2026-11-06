@@ -32,7 +32,8 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     lib.add_argument("--register", action="store_true", help="add the folder to your Blender preferences as an "
                                                              "asset library (queued; writes your Blender config)")
     lib.add_argument("--name", default=LIBRARY_NAME, help=f"asset library name (default {LIBRARY_NAME!r})")
-    lib.add_argument("--print-only", action="store_true", help="print the queue commands; queue nothing")
+    lib.add_argument("--print-only", action="store_true", help="print what would be unpacked and the queue "
+                                                               "commands; change nothing")
 
 
 def _queue(env, argv: list[str], *, name: str, load: str, print_only: bool) -> int:
@@ -55,8 +56,12 @@ def _library(args, env) -> int:
     from ..env.core import require
     from ..kit import library as L
     zpath = L.find_zip(getattr(env, "sdk_dir", None))
-    lib, new = L.unpack(zpath, env.cache_dir)
-    print(f"{'unpacked' if new else 'library'}: {lib}")
+    if args.print_only:    # say what would happen; unpack nothing
+        lib = L.library_dir(zpath, env.cache_dir)
+        print(f"{'library' if (lib / L.DONE).is_file() else 'would unpack ' + str(zpath) + ' into'}: {lib}")
+    else:
+        lib, new = L.unpack(zpath, env.cache_dir)
+        print(f"{'unpacked' if new else 'library'}: {lib}")
     if not (args.check or args.register):
         print(f"register this folder as a Blender asset library: {lib}  (or run `se2mod kit library --register`)")
         return 0
@@ -64,7 +69,7 @@ def _library(args, env) -> int:
     script = Path(L.__file__).with_name("library_blend.py")
     rc = 0
     if args.check:
-        blend = L.find_blend(lib)
+        blend = L.planned_blend(zpath, lib)
         out = lib / "probe.json"
         argv = [str(env.blender), "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(script),
                 "--", "probe", str(blend), str(out)]
