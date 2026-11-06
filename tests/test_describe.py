@@ -144,6 +144,39 @@ def test_check_targets_ratio_length_and_no_match():
     assert not res["missing"]["ok"] and "matches no part" in res["missing"]["why"]
 
 
+def test_targets_limited_to_collections():
+    md = """```targets
+[[target]]
+name = "industrial bell is the widest part"
+collections = ["*_ind"]
+a = "*_bell.x"
+b = "*.x"
+value = 1.0
+tol = 0.02
+
+[[target]]
+name = "military bell inside the plate"
+collections = "*_mil"
+a = "*_bell.x"
+b = "*.x"
+value = 0.88
+tol = 0.05
+```
+"""
+    ts = D.parse_targets(md)
+    assert ts[0]["collections"] == ["*_ind"] and ts[1]["collections"] == ["*_mil"]
+    ind = [_part("i_bell", (0, 0, 0), (1000, 1000, 500), coll="M_ind"),
+           _part("i_plate", (100, 100, 500), (900, 900, 600), coll="M_ind")]
+    res = D.check_targets(ts, ind)
+    assert [r["name"] for r in res] == ["industrial bell is the widest part"] and res[0]["ok"]
+    mil = [_part("m_bell", (50, 50, 0), (930, 930, 500), coll="M_mil"),
+           _part("m_plate", (0, 0, 500), (1000, 1000, 600), coll="M_mil")]
+    res = D.check_targets(ts, ind + mil)  # both families in one run: each target measures its own parts
+    assert [r["ok"] for r in res] == [True, True] and res[1]["measured"] == pytest.approx(0.88)
+    with pytest.raises(D.TargetError, match="list of name patterns"):
+        D.parse_targets('```targets\n[[target]]\na = "x.x"\nvalue = 1\ntol = 1\ncollections = 3\n```\n')
+
+
 def test_finish_and_text():
     body = D.analyze(_scene(), mid=[0, 0, 0])
     rep = D.finish(body, envelope=[2.5, 2.5, 2.5], targets=D.parse_targets(TARGETS_MD), source="toy.blend",

@@ -214,7 +214,9 @@ _REF = re.compile(r"^(.+)\.([xyz])$")
 def parse_targets(markdown: str, source: str = "targets") -> list[dict]:
     """Every [[target]] in the markdown's ```targets fenced blocks (TOML): {"name", "a": (glob, axis), "b": (glob,
     axis) or None, "value", "tol"}. `a` and `b` are `GLOB.AXIS` (axis x, y or z of the matched parts' union box);
-    without `b` the value is a length in mm, with it the ratio a/b."""
+    without `b` the value is a length in mm, with it the ratio a/b. An optional `collections` (a list of name
+    patterns) limits a target to the parts of matching collections, so one file can hold targets for several block
+    families; a run with no part in a matching collection skips that target."""
     import tomllib
     out = []
     for n, m in enumerate(_FENCE.finditer(markdown), 1):
@@ -240,7 +242,13 @@ def parse_targets(markdown: str, source: str = "targets") -> list[dict]:
                 value, tol = float(t["value"]), float(t["tol"])
             except (TypeError, ValueError):
                 raise TargetError(f"{where}: value and tol must be numbers") from None
-            out.append({"name": str(name), "a": refs[0], "b": refs[1], "value": value, "tol": tol})
+            colls = t.get("collections", [])
+            if isinstance(colls, str):
+                colls = [colls]
+            if not isinstance(colls, list) or not all(isinstance(c, str) for c in colls):
+                raise TargetError(f"{where}: collections must be a list of name patterns")
+            out.append({"name": str(name), "a": refs[0], "b": refs[1], "value": value, "tol": tol,
+                        "collections": colls})
     return out
 
 
@@ -254,12 +262,20 @@ def _measure(ref, parts):
 
 
 def check_targets(targets: list[dict], parts: list[dict]) -> list[dict]:
-    """[{"name", "ok", "measured", "value", "tol", "why"}]: a length in mm, or a ratio when the target has `b`."""
+    """[{"name", "ok", "measured", "value", "tol", "why"}]: a length in mm, or a ratio when the target has `b`. A target
+    with `collections` is measured on the parts of matching collections only, and left out when there are none."""
     out = []
     for t in targets:
+        colls = t.get("collections") or []
+        if colls:
+            mine = [p for p in parts if any(fnmatch.fnmatchcase(p.get("collection", ""), c) for c in colls)]
+            if not mine:
+                continue
+        else:
+            mine = parts
         r = {"name": t["name"], "value": t["value"], "tol": t["tol"], "measured": None, "ok": False, "why": ""}
-        a, na = _measure(t["a"], parts)
-        b, nb = _measure(t["b"], parts) if t["b"] else (None, 0)
+        a, na = _measure(t["a"], mine)
+        b, nb = _measure(t["b"], mine) if t["b"] else (None, 0)
         if a is None:
             r["why"] = f"{'.'.join(t['a'])} matches no part"
         elif t["b"] and b is None:
