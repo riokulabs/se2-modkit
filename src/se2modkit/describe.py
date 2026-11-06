@@ -370,8 +370,9 @@ def finish(body: dict, *, envelope=None, targets=None, mid_from="bbox center", *
 # ------------------------------------------------------------------------------------------------ Blender
 @contextmanager
 def _included(tops):
-    """Bring `tops` into the evaluated scene while reading, as the build does, then put every flag back: the
-    collections above and inside them included in the view layer, and they and their objects enabled in viewports. A
+    """Bring `tops` into the evaluated scene while reading, as the build does, then put every flag back: they, the
+    collections above and inside them, included in the view layer and enabled in viewports, and their objects enabled
+    in viewports (a parent's flags pass down to its children). A
     collection or object kept out is not evaluated: its objects keep the world matrix of their last evaluation and
     come out without modifiers, while the build turns these flags off and ships them as they are."""
     import bpy
@@ -388,19 +389,21 @@ def _included(tops):
         if lc.collection.name in colls:
             for x in above + [lc]:
                 clear(x, "exclude")   # a parent's flag sets its children's: those are walked, and set, after it
+                if x.collection is not master:
+                    clear(x.collection, "hide_viewport")
         for c in lc.children:
             walk(c, above + [lc])
 
-    vl = bpy.context.view_layer
-    walk(vl.layer_collection, [])
-    for c in colls.values():
-        if c is not bpy.context.scene.collection:
-            clear(c, "hide_viewport")
-        for o in c.objects:
-            clear(o, "hide_viewport")
-    if changed:
-        vl.update()
+    vl, master = bpy.context.view_layer, bpy.context.scene.collection
     try:
+        walk(vl.layer_collection, [])
+        for c in colls.values():
+            if c is not master:
+                clear(c, "hide_viewport")
+            for o in c.objects:
+                clear(o, "hide_viewport")
+        if changed:
+            vl.update()
         yield
     finally:
         for owner, attr in reversed(changed):
