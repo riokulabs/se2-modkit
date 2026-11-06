@@ -1,4 +1,6 @@
 """`se2modkit.describe` without Blender: roles, box gaps, the analysis on given boxes, targets and the text."""
+from types import SimpleNamespace
+
 import pytest
 
 from se2modkit import describe as D
@@ -17,6 +19,17 @@ def test_roles_from_name_then_collection():
     assert D.role_of("Column") == "part"                                  # "col" only as a whole word part
     assert D.role_of("pipe_clamp") == "part" and D.role_of("support_strut") == "part"   # words, not substrings
     assert D.role_of("top_light.001") == "light" and D.role_of("Strut_frame") == "hull"
+
+
+def test_ship_reason_is_one_rule_in_order():
+    def ob(name="Body", type_="MESH", hide_render=False):
+        return SimpleNamespace(name=name, type=type_, hide_render=hide_render)
+    assert D.ship_reason(ob()) is None
+    assert D.ship_reason(ob(type_="CURVE")) is None
+    assert D.ship_reason(ob(type_="EMPTY")) == "not geometry (EMPTY)"
+    assert D.ship_reason(ob("Cut"), cutters={"Cut"}) == "boolean cutter"
+    assert D.ship_reason(ob("Cut", hide_render=True), cutters={"Cut"}) == "render-hidden"
+    assert D.ship_reason(ob(hide_render=True), True) == "render-hidden collection"
 
 
 def test_bbox_gap_is_separation_or_minus_the_shallowest_overlap():

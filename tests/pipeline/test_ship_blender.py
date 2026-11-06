@@ -143,3 +143,21 @@ def test_ship_check_reports_every_shipped_collection_coplanar_across_them_and_an
     assert "FAIL XX_Box" in text and "standin_plate (render-hidden collection)" in text
     assert "rib is hidden in the viewport but ships" in text
     assert not (hooks.paths.models / "XX_Box").exists() and not hooks.paths.report.exists()
+
+
+def test_loose_loaded_objects_follow_the_same_ship_rule(clean):
+    from se2modkit.pipeline import ship_probe as SP
+    scratch = bpy.data.collections.new("Scratch")
+    body = _box("body", (0, 0, 0), (1, 1, 1), scratch)
+    hidden = _box("hidden", (0, 0, 0), (1, 1, 1), scratch)
+    hidden.hide_render = True
+    hidden.hide_viewport = True
+    empty = bpy.data.objects.new("anchor", None)
+    sink = SP.Sources()
+    sink.record("/work/box.blend", type("Dst", (), {"collections": [], "objects": [body, hidden, empty]})())
+    (entry,) = sink.report()
+    assert entry["collection"] == "(objects)"
+    got = {o["name"]: (o["ships"], o["why"], o["viewport_hidden"], o["path"]) for o in entry["objects"]}
+    assert got == {"body": (True, None, False, "body"), "hidden": (False, "render-hidden", True, "hidden"),
+                   "anchor": (False, "not geometry (EMPTY)", False, "anchor")}
+    bpy.data.objects.remove(empty)

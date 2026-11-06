@@ -21,7 +21,8 @@ import math
 import re
 
 __all__ = ["CELL", "CONTACT", "GEOMETRY", "NEAR", "ROLES", "TargetError", "analyze", "bbox_gap", "check_targets",
-           "describe_scene", "parse_targets", "role_of", "shipping_objects", "text", "walk_shipping"]
+           "describe_scene", "parse_targets", "role_of", "ship_reason", "shipping_objects", "text",
+           "walk_shipping"]
 
 CELL = 0.25          # m: a small grid cell
 CONTACT = 0.5        # mm: parts this close (or overlapping) touch
@@ -55,6 +56,14 @@ def role_of(name: str, collection: str = "") -> str:
 
 
 # ------------------------------------------------------------------------------------------------ what ships
+def ship_reason(o, collection_render_hidden: bool = False, cutters=()) -> str | None:
+    """Why the object `o` does not ship, or None when it does: under a render-hidden collection, hidden from renders
+    itself, a boolean operand (its name is in `cutters`), or not geometry. The one rule behind `walk_shipping` and the
+    ship check's loose objects."""
+    return ("render-hidden collection" if collection_render_hidden else "render-hidden" if o.hide_render else
+            "boolean cutter" if o.name in cutters else None if o.type in GEOMETRY else f"not geometry ({o.type})")
+
+
 def walk_shipping(top):
     """Every object under the collection `top` once, as (object, path, collection name, why it does not ship or None,
     hidden in the viewport). The rule: `top` ships whatever its own flags (a build takes it by name); below it an
@@ -75,10 +84,8 @@ def walk_shipping(top):
         for o in c.objects:
             if o is not None and o.name not in seen:
                 seen.add(o.name)
-                why = ("render-hidden collection" if hid_r else "render-hidden" if o.hide_render else
-                       "boolean cutter" if o.name in cutters else None if o.type in GEOMETRY else
-                       f"not geometry ({o.type})")
-                out.append((o, f"{path}/{o.name}", c.name, why, bool(hid_v or o.hide_viewport)))
+                out.append((o, f"{path}/{o.name}", c.name, ship_reason(o, hid_r, cutters),
+                            bool(hid_v or o.hide_viewport)))
         for ch in c.children:
             walk(ch, f"{path}/{ch.name}", hid_v or ch.hide_viewport, hid_r or ch.hide_render)
     walk(top, top.name, getattr(top, "hide_viewport", False), False)

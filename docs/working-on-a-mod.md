@@ -48,8 +48,11 @@ own stand-ins, and every slot falls back to a flat stand-in color without the SD
 `se2mod kit library` unpacks Keen's Blender material and decal library from the SDK's `BlenderMaterialLibrary` zip
 into the user cache once and prints the folder to add as a Blender asset library. `--check` opens it in a queued,
 read-only Blender and lists its image paths that do not exist here (they point at Keen's machines; most have a copy
-in the game or SDK install, which it names). `--register` adds the folder to your Blender preferences, also through
-the queue; it is never done unless asked.
+in the game or SDK install, which it names). `--relink` writes a copy of the library beside the unpacked one
+(`<folder>-relinked/`) whose .blend points those images at the copies in this game or SDK install, and lists the ones
+it could not find; it runs through the queue and never changes the install or the unpacked folder. `--register` adds
+the folder (the relinked copy when there is one) to your Blender preferences, also through the queue; it is never done
+unless asked. `--print-only` prints what would be unpacked and the queue commands, and changes nothing.
 
 `se2mod fracture check MOD BLOCK ... [--max-key-share F] [--json]` checks a block's fracture before an export. It
 builds the block in a headless Blender through the job queue (a medium job), then plans its fracture, cuts LOD0 and

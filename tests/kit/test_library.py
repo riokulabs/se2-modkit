@@ -5,6 +5,7 @@ the command is tested with --print-only."""
 
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 
@@ -115,3 +116,43 @@ def test_command_without_an_sdk_fails_plainly(_isolated, tmp_path, capsys):
     empty.mkdir()
     assert cli.main(["kit", "--sdk", str(empty), "library"]) == 1
     assert "no material library zip" in capsys.readouterr().err
+
+
+def test_print_only_unpacks_nothing(_isolated, tmp_path, capsys):
+    sdk = _sdk(tmp_path)
+    assert cli.main(["kit", "--sdk", str(sdk), "library", "--check", "--print-only"]) == 0
+    out = capsys.readouterr().out
+    assert "would unpack" in out and "Lib.blend" in out and "se2mod queue submit" in out
+    assert not (tmp_path / "xdg").exists() or not list((tmp_path / "xdg").rglob("blender-library"))
+
+
+def test_relink_stages_a_copy_beside_the_library_and_register_prefers_it(tmp_path):
+    lib, _ = L.unpack(L.find_zip(_sdk(tmp_path, {"Lib.blend": b"BLENDER", "blender_assets.cats.txt": b"VERSION 1\n",
+                                                  "previews/a.png": b"PNG"})), tmp_path / "cache")
+    (lib / "probe.json").write_text("{}")
+    assert L.register_dir(lib) == lib
+    stage, mapping, out = L.prepare_relink(lib, lib / "Lib.blend", {"//../x/a.dds": "/game/a.dds"})
+    assert stage.parent == lib.parent and out == stage / "Lib.blend" and not out.exists()
+    assert (stage / "blender_assets.cats.txt").read_bytes() == b"VERSION 1\n"
+    assert (stage / "previews" / "a.png").is_file() and not (stage / "probe.json").exists()
+    assert not (stage / L.DONE).exists()
+    assert json.loads(mapping.read_text()) == {"//../x/a.dds": "/game/a.dds"}
+    assert L.register_dir(lib) == lib                       # staged, not finished
+    out.write_bytes(b"RELINKED")
+    final = L.finish_relink(lib, stage)
+    assert final == L.relinked_dir(lib) == lib.with_name(lib.name + "-relinked") and not stage.exists()
+    assert L.register_dir(lib) == final and (final / L.RELINKED).is_file()
+    assert (lib / "Lib.blend").read_bytes() == b"BLENDER"    # the unpacked copy is left as it was
+    stage2, _, out2 = L.prepare_relink(lib, lib / "Lib.blend", {})
+    out2.write_bytes(b"AGAIN")
+    assert (L.finish_relink(lib, stage2) / "Lib.blend").read_bytes() == b"AGAIN"
+
+
+def test_relink_print_only_shows_the_jobs_and_registers_the_copy(_isolated, tmp_path, capsys):
+    sdk = _sdk(tmp_path)
+    assert cli.main(["kit", "--sdk", str(sdk), "library", "--relink", "--register", "--print-only"]) == 0
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("se2mod queue submit")]
+    assert len(lines) == 3
+    assert " probe " in lines[0] and " relink " in lines[1] and " register " in lines[2]
+    assert "-relinked" in lines[1] and "-relinked" in lines[2]
+    assert not list((tmp_path / "xdg").rglob("blender-library")) if (tmp_path / "xdg").exists() else True

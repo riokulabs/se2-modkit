@@ -30,6 +30,7 @@ def _box(name, lo, hi, coll):
 
 @pytest.fixture
 def block():
+    bpy.ops.wm.read_factory_settings(use_empty=True)   # an earlier test's "Body" would make this one "Body.001"
     top = bpy.data.collections.new("Block")
     plan = bpy.data.collections.new("Plan")
     bpy.context.scene.collection.children.link(top)
