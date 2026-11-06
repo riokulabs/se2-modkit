@@ -19,6 +19,7 @@ from __future__ import annotations
 import fnmatch
 import math
 import re
+from contextlib import contextmanager
 
 __all__ = ["CELL", "CONTACT", "GEOMETRY", "NEAR", "ROLES", "TargetError", "analyze", "bbox_gap", "check_targets",
            "describe_scene", "parse_targets", "role_of", "ship_reason", "shipping_objects", "text",
@@ -367,10 +368,53 @@ def finish(body: dict, *, envelope=None, targets=None, mid_from="bbox center", *
 
 
 # ------------------------------------------------------------------------------------------------ Blender
+@contextmanager
+def _included(tops):
+    """Bring `tops` into the evaluated scene while reading, as the build does, then put every flag back: they, the
+    collections above and inside them, included in the view layer and enabled in viewports, and their objects enabled
+    in viewports (a parent's flags pass down to its children). A
+    collection or object kept out is not evaluated: its objects keep the world matrix of their last evaluation and
+    come out without modifiers, while the build turns these flags off and ships them as they are."""
+    import bpy
+
+    colls = {t.name: t for t in tops} | {c.name: c for t in tops for c in t.children_recursive}
+    changed = []    # (owner, attribute), each flag that was True
+
+    def clear(owner, attr):
+        if getattr(owner, attr):
+            changed.append((owner, attr))
+            setattr(owner, attr, False)
+
+    def walk(lc, above):
+        if lc.collection.name in colls:
+            for x in above + [lc]:
+                clear(x, "exclude")   # a parent's flag sets its children's: those are walked, and set, after it
+                if x.collection is not master:
+                    clear(x.collection, "hide_viewport")
+        for c in lc.children:
+            walk(c, above + [lc])
+
+    vl, master = bpy.context.view_layer, bpy.context.scene.collection
+    try:
+        walk(vl.layer_collection, [])
+        for c in colls.values():
+            if c is not master:
+                clear(c, "hide_viewport")
+            for o in c.objects:
+                clear(o, "hide_viewport")
+        if changed:
+            vl.update()
+        yield
+    finally:
+        for owner, attr in reversed(changed):
+            setattr(owner, attr, True)
+        if changed:
+            vl.update()
+
+
 def _scene_parts(collections):
     """Read the parts (evaluated meshes in world space) from the open file. Returns (parts, missing collections)."""
     import bpy
-    from mathutils.bvhtree import BVHTree
 
     scene = bpy.context.scene
     if collections:
@@ -379,6 +423,14 @@ def _scene_parts(collections):
         tops = [t for t in tops if t is not None]
     else:
         tops, missing = [scene.collection], []
+    with _included(tops):
+        return _read_parts(tops, collections), missing
+
+
+def _read_parts(tops, collections):
+    import bpy
+    from mathutils.bvhtree import BVHTree
+
     dg = bpy.context.evaluated_depsgraph_get()
     parts, seen = [], set()
     for top in tops:
@@ -411,7 +463,7 @@ def _scene_parts(collections):
             parts.append({"name": ob.name, "collection": coll, "block": block, "role": role_of(ob.name, coll),
                           "lo": lo, "hi": hi, "tris": tris, "_verts": verts, "_closed": closed,
                           "_bvh": BVHTree.FromPolygons(verts, polys) if polys else None})
-    return parts, missing
+    return parts
 
 
 SAMPLE = 20000   # most vertices tested per direction for one pair
