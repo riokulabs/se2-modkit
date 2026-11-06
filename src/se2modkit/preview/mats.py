@@ -9,6 +9,12 @@ Texture sources are discovered (`configure` overrides them): the game's GameData
 the Mod SDK's GameData/Vanilla/Assets/BlockMaterials, both read only. Without them every material falls back to a
 plain stand-in colour.
 
+SDK source-map materials: for a Keen slot whose SDK definition resolves to source PNGs (`preview.sdkmat` reads the
+.def -> .comptex -> .texpreset chain), `slot_key` gives an `SDK:<definition>` key and `get` builds a Principled BSDF
+from the albedo (player paint through the color mask), normal, roughness, metalness, AO and emissive maps, the way the
+game's PBR shader and Keen's own Blender material library wire them. Without the SDK, or for a slot with no albedo
+map, the flat stand-in stays. `configure(sdk_materials=False)` turns the source maps off.
+
 The tables are plain dicts a mod may extend at import time: PAINTS (paint name -> linear RGB), SIMPLE / EMIS / GHOSTS
 (stand-in key -> look), KEEN_MAP (Keen slot name -> stand-in key), BY_GUID (material GUID -> how to draw it).
 """
@@ -23,14 +29,18 @@ except ImportError:   # pragma: no cover - outside Blender
 
 from . import texcache
 
-_PATHS = {"game_mats": None, "sdk_mats": None, "texcache": None, "legacy_prefix": None, "discovered": False}
+_PATHS = {"game_mats": None, "sdk_mats": None, "texcache": None, "legacy_prefix": None, "discovered": False,
+          "sdk_materials": True}
 
 
-def configure(game_mats=None, sdk_mats=None, texcache_dir=None, legacy_prefix=None):
+def configure(game_mats=None, sdk_mats=None, texcache_dir=None, legacy_prefix=None, sdk_materials=None):
     """Override the texture sources (the game's and the SDK's BlockMaterials folders) and the cache folder;
-    `legacy_prefix` (the mod's prefix) lets its old `<PREFIX>TEXCACHE` variable name the cache for one release."""
+    `legacy_prefix` (the mod's prefix) lets its old `<PREFIX>TEXCACHE` variable name the cache for one release;
+    `sdk_materials=False` keeps the flat stand-ins instead of the SDK source-map materials."""
     if legacy_prefix is not None:
         _PATHS["legacy_prefix"] = legacy_prefix
+    if sdk_materials is not None:
+        _PATHS["sdk_materials"] = bool(sdk_materials)
     for k, v in (("game_mats", game_mats), ("sdk_mats", sdk_mats), ("texcache", texcache_dir)):
         if v is not None:
             _PATHS[k] = str(v)
@@ -163,8 +173,15 @@ def _dds_png(path):
     return out
 
 
+def _alive(im):
+    try:   # a reset session (read_factory_settings) frees the image under a cached reference
+        return im.name in bpy.data.images
+    except ReferenceError:
+        return False
+
+
 def _img(path, noncolor=False):
-    if path not in _IMG or _IMG[path].name not in bpy.data.images:
+    if path not in _IMG or not _alive(_IMG[path]):
         im = bpy.data.images.load(path)
         if noncolor:
             im.colorspace_settings.name = "Non-Color"
@@ -298,7 +315,15 @@ def get(key):
             pass
     base, _, var = key.partition(":")
     paint = var or "keen"
-    if base == "PMC":
+    if base == "SDK":
+        m = None
+        name, _, paint = var.partition(":")
+        mat = sdk_material(name)
+        if mat is not None:
+            m = sdk_pbr_mat("pv_" + key, mat, keen_key(name, paint or "keen"), paint or "keen")
+        if m is None:   # the SDK went away under a cached key: the slot's stand-in
+            return get(keen_key(name, paint or "keen"))
+    elif base == "PMC":
         m = simple("pv_" + key, PAINTS[paint], 0.42, 0.55, noise=0.06)
     elif base in SIMPLE:
         c, r, mt, nz = SIMPLE[base]
@@ -385,17 +410,23 @@ def sdk_material_name(guid):
     return _SDK_NAMES.get(guid)
 
 
-def _small_png(src, size=1024):
-    """A <=size copy of an SDK PNG in the texture cache (the construction textures are 4096^2), written under a mkstemp
-    name and renamed into place (parallel renders share the cache)."""
+def _small_png(src, size=1024, noncolor=False):
+    """A <=size copy of an SDK PNG in the texture cache (most SDK maps are 2048^2 or 4096^2), written under a mkstemp
+    name and renamed into place (parallel renders share the cache). The name carries the source's size and time, so
+    an SDK update makes a new copy; data maps (`noncolor`) are scaled as raw values."""
     cache = _cache()
-    out = os.path.join(cache, f"s{size}_" + os.path.basename(src))
+    st = os.stat(src)
+    out = os.path.join(cache, f"s{size}_{st.st_size:x}{int(st.st_mtime):x}_" + os.path.basename(src))
     if not os.path.exists(out):
         fd, tmp = _mkstemp(cache, ".png")
         os.close(fd)
         im = bpy.data.images.load(src)
-        if max(im.size) > size:
-            im.scale(size, size)
+        if noncolor:
+            im.colorspace_settings.name = "Non-Color"
+        w, h = im.size[:]
+        if max(w, h) > size:
+            k = size / max(w, h)
+            im.scale(max(1, round(w * k)), max(1, round(h * k)))
         im.filepath_raw = tmp
         im.file_format = "PNG"
         im.save()
@@ -564,4 +595,161 @@ def apply(objs, paint="keen"):
             continue
         for i, s in enumerate(o.material_slots):
             if s.material:
-                o.material_slots[i].material = get(keen_key(s.material.name, paint))
+                o.material_slots[i].material = get(slot_key(s.material.name, paint))
+
+
+# ---------------------------------------------------------------------------------------------------- SDK source maps
+# Built from the Mod SDK's source PNGs the way the game's PBR shader reads its packed textures (ColorMetal: albedo +
+# metalness; NormalRoughness: tangent normal + roughness; Extensions: AO, emissive, color mask, alpha mask) and the way
+# Keen's Blender material library (`se2mod kit library`) wires them: the normal map straight into a tangent-space
+# Normal Map node, roughness and metalness used as they are, AO multiplying the base color.
+#
+# Normal-map green channel: OpenGL (Y+, Blender's own convention), so it is NOT flipped. Evidence: (1) every one of the
+# 29 materials in Keen's Blender library feeds its normal texture into Normal Map with no green inversion; (2) of the
+# SDK's normal maps that ship a height map beside them, 138 have green rising with the height toward the top of the
+# image (OpenGL) against 7 the other way (GratingMetallic, WarningStripes, a debug texture and a few constructions),
+# measured by correlating each normal's green channel with the height map's vertical gradient; (3) no texture packing
+# preset flips or inverts a channel, and the model importer keeps the bitangent an FBX from Blender carries, so the game
+# reads the maps the way Blender does. Set NORMAL_GREEN_FLIP to True only if that ever changes.
+NORMAL_GREEN_FLIP = False
+SDK_TEX_SIZE = 1024        # source maps are downsized into the texture cache to this many pixels on the long side
+PAINT_ALBEDO_REF = 0.217   # mean linear albedo of PaintedMetalColorable_albedo: the paint multiplies albedo / this
+SDK_KINDS = ("PBRMaterialDefinitionObjectBuilder",)   # glass, LCDs, parallax and decals keep their own paths
+SDK_DEF = {"LCDScreenOff": "LCDScreen_Off"}           # slot name -> SDK definition name, where they differ
+SDK_KEEP = ("Unmapped", "Section")                    # stand-ins that never take source maps
+EMISSION_DEFAULT = 3.0                                # Keen's library: emission strength of a lit emissive material
+
+
+def _presets_dir(block_mats):
+    """`<SDK>/GameData/Engine/Assets/Materials/Presets` from `<SDK>/GameData/Vanilla/Assets/BlockMaterials`."""
+    p = os.path.normpath(block_mats)
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(p))), "Engine", "Assets", "Materials",
+                        "Presets")
+
+
+def sdk_index():
+    """The SDK material index (`preview.sdkmat.Index`), or None when the SDK or the source maps are off."""
+    if not _PATHS["sdk_materials"] or not sdk_mats() or not os.path.isdir(sdk_mats()):
+        return None
+    from . import sdkmat
+    return sdkmat.index(sdk_mats(), _presets_dir(sdk_mats()))
+
+
+def sdk_def_name(slot_name):
+    """The SDK definition a Keen slot wears: copies (`.001`) and stand-in suffixes (`_Subpart`) dropped, every
+    PaintedMetalColorable variant and `_LastLOD` slot as PaintedMetalColorable (as `keen_key` does)."""
+    n = slot_name.split(".")[0]
+    for suf in ("_Subpart", "_SubPart"):
+        if n.endswith(suf) and n != suf:
+            n = n[:-len(suf)]
+    if n.startswith("PaintedMetalColorable") or n.endswith("_LastLOD"):
+        return "PaintedMetalColorable"
+    return SDK_DEF.get(n, n)
+
+
+def sdk_material(def_name):
+    """The SDK material `def_name` resolved to its source maps, or None (no SDK, another kind, or no albedo map)."""
+    ix = sdk_index()
+    mat = ix.material(def_name) if ix is not None else None
+    if mat is None or mat.kind not in SDK_KINDS or not mat.path("albedo"):
+        return None
+    return mat
+
+
+def slot_key(slot_name, paint="keen"):
+    """Preview key of a Keen slot: `SDK:<definition>[:<paint>]` when its SDK source maps can be drawn, else the flat
+    stand-in key of `keen_key`. An emissive stand-in takes the source maps only when the SDK has an emissive mask to
+    light (a screen with no mask keeps its glowing stand-in)."""
+    std = keen_key(slot_name, paint)
+    base = std.partition(":")[0]
+    if not (base == "PMC" or (base in SIMPLE and base not in SDK_KEEP) or base in EMIS):
+        return std
+    name = sdk_def_name(slot_name)
+    mat = sdk_material(name)
+    if mat is None:
+        return std
+    if base in EMIS and EMIS[base][2] is not None and not mat.path("emissive"):
+        return std
+    return f"SDK:{name}:{paint}" if mat.path("colormask") else f"SDK:{name}"
+
+
+def _map(nt, path, noncolor):
+    t = _node(nt, "ShaderNodeTexImage")
+    t.image = _img(_small_png(path, SDK_TEX_SIZE, noncolor=noncolor), noncolor=noncolor)
+    return t
+
+
+def _float_in(nt, b, socket, mat, role, default):
+    p = mat.path(role)
+    if p:
+        nt.links.new(_map(nt, p, True).outputs["Color"], b.inputs[socket])
+    else:
+        b.inputs[socket].default_value = mat.value(role, default)
+
+
+def sdk_pbr_mat(name, mat, standin, paint="keen"):
+    """A Principled BSDF from an SDK material's source maps (`sdkmat.Material`); `standin` (its `keen_key`) gives an
+    emissive slot its color and strength."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    b = nt.nodes["Principled BSDF"]
+    alb = _map(nt, mat.path("albedo"), False)
+    col = alb.outputs["Color"]
+    mask_path, mask_val = mat.path("colormask"), mat.value("colormask", 0.0)
+    if mask_path or mask_val > 0:   # the player paint where the color mask says (as the game's ColorizeGray)
+        pc = PAINTS.get(paint, PAINTS["keen"])
+        mul = _node(nt, "ShaderNodeMix", data_type="RGBA", blend_type="MULTIPLY")
+        if mask_path:
+            nt.links.new(_map(nt, mask_path, True).outputs["Color"], mul.inputs[0])
+        else:
+            mul.inputs[0].default_value = mask_val
+        nt.links.new(col, mul.inputs[6])
+        mul.inputs[7].default_value = (*(min(c / PAINT_ALBEDO_REF, 6.0) for c in pc), 1)
+        col = mul.outputs[2]
+    if mat.path("ao"):
+        ao = _node(nt, "ShaderNodeMix", data_type="RGBA", blend_type="MULTIPLY")
+        ao.inputs[0].default_value = 1.0
+        nt.links.new(col, ao.inputs[6])
+        nt.links.new(_map(nt, mat.path("ao"), True).outputs["Color"], ao.inputs[7])
+        col = ao.outputs[2]
+    nt.links.new(col, b.inputs["Base Color"])
+    _float_in(nt, b, "Metallic", mat, "metal", 0.0)
+    _float_in(nt, b, "Roughness", mat, "roughness", 0.5)
+    if mat.path("normal"):
+        tn = _map(nt, mat.path("normal"), True)
+        out = tn.outputs["Color"]
+        if NORMAL_GREEN_FLIP:
+            sep = _node(nt, "ShaderNodeSeparateColor")
+            inv = _node(nt, "ShaderNodeMath", operation="SUBTRACT")
+            inv.inputs[0].default_value = 1.0
+            comb = _node(nt, "ShaderNodeCombineColor")
+            nt.links.new(out, sep.inputs[0])
+            nt.links.new(sep.outputs[1], inv.inputs[1])
+            for i, s in ((0, sep.outputs[0]), (1, inv.outputs[0]), (2, sep.outputs[2])):
+                nt.links.new(s, comb.inputs[i])
+            out = comb.outputs[0]
+        nm = _node(nt, "ShaderNodeNormalMap", space="TANGENT")
+        nt.links.new(out, nm.inputs["Color"])
+        nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
+    sbase = standin.partition(":")[0]
+    if mat.path("emissive"):
+        emit, strength = (EMIS[sbase][2], EMIS[sbase][3]) if sbase in EMIS else (None, EMISSION_DEFAULT)
+        if emit is not None or (sbase not in EMIS and mat.emissivity > 0):
+            em = _node(nt, "ShaderNodeMix", data_type="RGBA", blend_type="MULTIPLY")
+            em.inputs[0].default_value = 1.0
+            nt.links.new(_map(nt, mat.path("emissive"), True).outputs["Color"], em.inputs[6])
+            if emit is not None:
+                em.inputs[7].default_value = (*emit, 1)
+            else:
+                nt.links.new(alb.outputs["Color"], em.inputs[7])
+            nt.links.new(em.outputs[2], b.inputs["Emission Color"])
+            b.inputs["Emission Strength"].default_value = strength
+    if mat.path("alphamask"):
+        nt.links.new(_map(nt, mat.path("alphamask"), True).outputs["Color"], b.inputs["Alpha"])
+        for attr, val in (("surface_render_method", "DITHERED"), ("blend_method", "CLIP")):
+            try:
+                setattr(m, attr, val)
+            except (AttributeError, TypeError):
+                pass
+    return m

@@ -68,9 +68,9 @@ def material_key(name: str, table: dict) -> tuple[str, bool]:
     from . import mats
     base = name.split(".")[0]
     if base in table:
-        return mats.keen_key(table[base]), False
+        return mats.slot_key(table[base]), False
     if mats.is_keen_slot(name):
-        return mats.keen_key(name), False
+        return mats.slot_key(name), False
     return UNMAPPED, True
 
 

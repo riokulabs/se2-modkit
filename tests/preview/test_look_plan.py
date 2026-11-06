@@ -66,12 +66,13 @@ def test_before_reuses_cameras(tmp_path):
     assert job["before"]["top"]["png"].endswith("XX_Drive_look_r1_top.png")
 
 
-def test_unmapped_material_is_magenta_and_listed():
+def test_unmapped_material_is_magenta_and_listed(monkeypatch):
+    from se2modkit.preview import mats
+    monkeypatch.setitem(mats._PATHS, "sdk_materials", False)   # the flat stand-ins, whether or not an SDK is here
     assert look.material_key("PaintedMetalColorable.001", {}) == ("PMC:keen", False)
     assert look.material_key("BrushedMetal", {}) == ("Brushed", False)
     assert look.material_key("BellSteel", {"BellSteel": "Chrome"}) == ("Chrome", False)
     assert look.material_key("Material.012", {}) == (look.UNMAPPED, True)
-    from se2modkit.preview import mats
     assert mats.SIMPLE[look.UNMAPPED][0] == (1.0, 0.0, 1.0)
 
 
