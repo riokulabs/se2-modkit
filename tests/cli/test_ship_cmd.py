@@ -13,6 +13,7 @@ def mod(tmp_path, monkeypatch):
     for name in ("SE2MODKIT_CONFIG", "SE2_WORKSPACE"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))   # the cache (and queue) on Windows: one per test
     monkeypatch.setenv("SE2_BLENDER", "/bin/true")
     root = tmp_path / "Toy Mod"
     (root / "Source" / "Model").mkdir(parents=True)
