@@ -120,3 +120,32 @@ def test_a_part_in_a_hollow_part_is_not_inside_it():
         meshes = [o.data for o in objs]
         bpy.data.batch_remove(objs)
         bpy.data.batch_remove([m for m in meshes if m.users == 0] + [top])
+
+
+
+@pytest.mark.parametrize("off", ["exclude", "collection", "object"])
+def test_a_collection_kept_out_of_the_viewport_is_read_as_it_ships(off):
+    """A collection excluded from the view layer or disabled in viewports, or an object disabled in viewports, is not
+    evaluated: its objects keep the world matrix of their last evaluation and no modifiers. Describe brings them in
+    while reading (as the build does), then leaves every flag as it was."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    top = bpy.data.collections.new("Away")
+    bpy.context.scene.collection.children.link(top)
+    ob = _box("Post", (0.0, -0.1, -0.1), (0.2, 0.1, 0.1), top)
+    bpy.context.view_layer.update()
+    layer = bpy.context.view_layer.layer_collection.children["Away"]
+    flag = {"exclude": (layer, "exclude"), "collection": (top, "hide_viewport"), "object": (ob, "hide_viewport")}[off]
+    setattr(*flag, True)
+    ob.location.x = 1.0                                   # moved while out: matrix_world stays at the origin
+    arr = ob.modifiers.new("Array", "ARRAY")              # two copies end to end: 0.4 m long
+    arr.count = 2
+    try:
+        rep = D.describe_scene(["Away"])
+        (part,) = rep["parts"]
+        assert part["lo"][0] == pytest.approx(1000, abs=0.01)
+        assert part["hi"][0] == pytest.approx(1400, abs=0.01)
+        assert [layer.exclude, top.hide_viewport, ob.hide_viewport] == [k == off for k in ("exclude", "collection",
+                                                                                           "object")]
+    finally:
+        bpy.data.batch_remove([ob])
+        bpy.data.batch_remove([m for m in bpy.data.meshes if m.users == 0] + [top])
