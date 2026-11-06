@@ -25,11 +25,11 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from ..describe import GEOMETRY, walk_shipping
 from . import fracture_mesh as FM
 
 __all__ = ["GEOMETRY", "PALETTE", "Sources", "capture_sources", "render_exploded", "shipping_set", "zone_bounds"]
 
-GEOMETRY = ("MESH", "CURVE", "SURFACE", "META", "FONT")
 # Tableau 10: ten hues that stay apart under Workbench shading (the first palette had two near-identical olives)
 PALETTE = ((0.84, 0.15, 0.16), (0.12, 0.47, 0.71), (1.00, 0.50, 0.05), (0.17, 0.63, 0.17), (0.58, 0.40, 0.74),
            (0.55, 0.34, 0.29), (0.89, 0.47, 0.76), (0.50, 0.50, 0.50), (0.74, 0.74, 0.13), (0.09, 0.75, 0.81))
@@ -66,27 +66,10 @@ def _object(o, path, coll_hidden_v, coll_hidden_r, cutters) -> dict:
 
 
 def _objects(top) -> list[dict]:
-    """Every object under the loaded collection `top`, as saved (see the module doc for what ships)."""
-    every = [o for o in top.all_objects if o is not None]
-    cutters = set()
-    for o in every:
-        for m in getattr(o, "modifiers", ()):
-            if m.type == "BOOLEAN":
-                if getattr(m, "object", None) is not None:
-                    cutters.add(m.object.name)
-                if getattr(m, "collection", None) is not None:
-                    cutters.update(x.name for x in m.collection.all_objects if x is not None)
-    out, seen = [], set()
-
-    def walk(c, path, hid_v, hid_r):
-        for o in c.objects:
-            if o is not None and o.name not in seen:
-                seen.add(o.name)
-                out.append(_object(o, f"{path}/{o.name}", hid_v, hid_r, cutters))
-        for ch in c.children:
-            walk(ch, f"{path}/{ch.name}", hid_v or ch.hide_viewport, hid_r or ch.hide_render)
-    walk(top, top.name, top.hide_viewport, False)
-    return out
+    """Every object under the loaded collection `top`, as saved (see the module doc for what ships; the rule itself is
+    `describe.walk_shipping`, shared with `se2mod describe`)."""
+    return [{"name": o.name, "path": path, "type": o.type, "ships": why is None, "why": why, "viewport_hidden": hv}
+            for o, path, _coll, why, hv in walk_shipping(top)]
 
 
 class _Load:
