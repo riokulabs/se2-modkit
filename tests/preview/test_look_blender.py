@@ -136,6 +136,36 @@ def test_cutters_and_render_hidden_collections_stay_out(tmp_path):
     assert max(report["half_extents"]) == pytest.approx(0.5, abs=1e-3)
 
 
+@pytest.mark.parametrize("kept_out", ["collection", "object", "render"])
+def test_a_block_kept_out_of_the_viewport_or_render_is_read_as_it_ships(tmp_path, kept_out):
+    # a working file saved with the block's collection (or its object) disabled in viewports, or its collection
+    # hidden from render by an earlier look-dev render: the set still sees the block, with its modifiers
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    top = bpy.data.collections.new("DRIVE")
+    bpy.context.scene.collection.children.link(top)
+    bpy.ops.mesh.primitive_cube_add(size=1.0)
+    ob = bpy.context.active_object
+    ob.data.materials.append(bpy.data.materials.new("PaintedMetalColorable"))
+    for c in list(ob.users_collection):
+        c.objects.unlink(ob)
+    top.objects.link(ob)
+    if kept_out == "collection":
+        top.hide_viewport = True
+    elif kept_out == "object":
+        ob.hide_viewport = True
+    else:
+        top.hide_render = True
+    ob.modifiers.new("arr", "ARRAY").count = 3
+    src = tmp_path / "kept_out.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(src), copy=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    out = tmp_path / "look" / "XX_Kept" / "r1"
+    report = look_run.run(look.build_job(source=src, block="XX_Kept", out_dir=out, stage="look", rnd=1,
+                                         views=["front"], set_name="hull", collection="DRIVE"))
+    assert report["tris"] == 36
+    assert max(report["half_extents"]) == pytest.approx(1.5, abs=1e-3)
+
+
 def test_a_geometry_check_error_still_writes_the_report(tmp_path, monkeypatch):
     from se2modkit.pipeline import geocheck as GC
 
