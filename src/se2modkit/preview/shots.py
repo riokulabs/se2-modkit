@@ -209,6 +209,8 @@ def add_locator(close_png: Path, overview_png: Path, rect_px, out: Path, *, shar
     thumb = over.resize((w, h), Image.LANCZOS)
     draw = ImageDraw.Draw(thumb)
     x0, y0, x1, y1 = (round(v * s) for v in rect_px)
+    x0, x1 = sorted((min(max(x0, 0), w - 1), min(max(x1, 0), w - 1)))     # a rect past the frame stays on the thumb
+    y0, y1 = sorted((min(max(y0, 0), h - 1), min(max(y1, 0), h - 1)))
     draw.rectangle((x0, y0, x1, y1), outline=(230, 30, 30), width=max(2, w // 60))
     ImageDraw.Draw(thumb).rectangle((0, 0, w - 1, h - 1), outline=(240, 240, 240), width=1)
     margin = 8

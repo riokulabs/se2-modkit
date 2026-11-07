@@ -141,6 +141,14 @@ def test_locator_inset_drawn(tmp_path):
     assert json.loads(Path(f"{out}.locator").read_text())["overview"] == "over.png"
 
 
+def test_locator_takes_a_rect_past_the_frame(tmp_path):
+    close = _png(tmp_path / "A_fix_r1_3q_front_close-x.png", 120, size=(400, 300))
+    over = _png(tmp_path / "over.png", 40, size=(400, 300))
+    out = tmp_path / "out.png"
+    shots.add_locator(close, over, (520, 310, 400, 300), out)        # a part right of and below the overview
+    assert Image.open(out).size == (400, 300)
+
+
 def test_shots_check_cli_exit_codes(tmp_path, capsys, monkeypatch):
     from se2modkit import cli
     for name in ("SE2MODKIT_CONFIG", "SE2_WORKSPACE"):

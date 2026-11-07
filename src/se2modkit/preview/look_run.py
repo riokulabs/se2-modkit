@@ -45,6 +45,8 @@ def _load(job: dict) -> bpy.types.Collection:
     else:
         bpy.ops.import_scene.fbx(filepath=src)
     new = [o for o in bpy.data.objects if o not in before]
+    if kind == "blend":
+        _bring_in(data_to.collections[0] if want else None, new)
     for o in new:
         if o.type in ("LIGHT", "CAMERA"):
             bpy.data.objects.remove(o)
@@ -58,6 +60,21 @@ def _load(job: dict) -> bpy.types.Collection:
     # own scenes, which instance this collection, so the working scene is never rendered.
     bpy.context.view_layer.update()
     return holder
+
+
+def _bring_in(coll, objs) -> None:
+    """Read a working file's block as a build reads it: the block's own collection renders (a saved look-dev render
+    may have hidden it; its sub-collections keep their own choice), and it, the collections inside it and its objects
+    are enabled in viewports. Blender does not evaluate a collection or object disabled in viewports: its objects keep
+    the position of their last evaluation and come out without modifiers, so the bounds, close-ups and checks would
+    read an older model than the one that ships. The source file is never written, so nothing is put back."""
+    if coll is not None:
+        coll.hide_render = False
+        for c in (coll, *coll.children_recursive):
+            c.hide_viewport = False
+        objs = [o for o in coll.all_objects if o is not None]
+    for o in objs:
+        o.hide_viewport = False
 
 
 def _render_meshes(coll) -> list:
@@ -113,7 +130,9 @@ def _pixel_rect(sc, cam, pts):
     w, h = r.resolution_x * r.resolution_percentage / 100, r.resolution_y * r.resolution_percentage / 100
     uv = [world_to_camera_view(sc, cam, p) for p in pts]
     xs, ys = [p.x * w for p in uv], [(1 - p.y) * h for p in uv]
-    return [round(max(0, min(xs))), round(max(0, min(ys))), round(min(w, max(xs))), round(min(h, max(ys)))]
+    cx = lambda v: round(min(w, max(0.0, v)))           # noqa: E731  (a part outside the frame clamps to its edge)
+    cy = lambda v: round(min(h, max(0.0, v)))           # noqa: E731
+    return [cx(min(xs)), cy(min(ys)), cx(max(xs)), cy(max(ys))]
 
 
 def _shoot(shot, name, loc, tgt, lens, ortho, out):
