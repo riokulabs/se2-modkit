@@ -76,6 +76,31 @@ def test_unmapped_material_is_magenta_and_listed(monkeypatch):
     assert mats.SIMPLE[look.UNMAPPED][0] == (1.0, 0.0, 1.0)
 
 
+class _SdkMat:
+    def path(self, role):
+        return None   # no colour mask: drawn as is, no player paint
+
+
+def test_a_slot_the_sdk_has_maps_for_is_drawn_from_them(monkeypatch, tmp_path):
+    """A vanilla slot outside the stand-in tables (the hydrogen thruster cone) is drawn from its SDK maps, mapped or
+    met as it is, never refused or left magenta."""
+    from se2modkit.preview import mats
+    monkeypatch.setattr(mats, "sdk_material", lambda name: _SdkMat() if name == "HydrogenThrusterCone" else None)
+    assert look.material_key("rb_Cone", {"rb_Cone": "HydrogenThrusterCone"}) == ("SDK:HydrogenThrusterCone", False)
+    assert look.material_key("HydrogenThrusterCone.001", {}) == ("SDK:HydrogenThrusterCone", False)
+    assert look.material_key("Material.012", {}) == (look.UNMAPPED, True)
+    assert _job(tmp_path, materials={"rb_Cone": "HydrogenThrusterCone"})["materials"] == {"rb_Cone": "HydrogenThrusterCone"}
+    with pytest.raises(PreviewError, match="NoSuchSlot"):
+        _job(tmp_path, materials={"rb_X": "NoSuchSlot"})
+
+
+def test_a_slot_only_the_sdk_knows_is_refused_without_the_sdk(monkeypatch, tmp_path):
+    from se2modkit.preview import mats
+    monkeypatch.setitem(mats._PATHS, "sdk_materials", False)
+    with pytest.raises(PreviewError, match="Mod SDK"):
+        _job(tmp_path, materials={"rb_Cone": "HydrogenThrusterCone"})
+
+
 def test_source_kinds(tmp_path):
     for ext in (".blend", ".glb", ".gltf", ".fbx"):
         assert look.source_kind(tmp_path / f"x{ext}") == ext[1:]
