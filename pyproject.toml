@@ -17,7 +17,8 @@ publish = []  # Pillow is optional, used only for thumbnails when installed
 diag = []
 preview = ["Pillow"]
 gui = ["PySide6-Essentials>=6.7"]  # se2mod queue gui
-dev = ["pytest", "pytest-xdist", "ruff", "Pillow"]
+mcp = ["mcp>=2"]  # se2mod mcp
+dev = ["pytest", "pytest-xdist", "ruff", "Pillow", "mcp>=2"]
 
 [project.scripts]
 se2mod = "se2modkit.cli:main"

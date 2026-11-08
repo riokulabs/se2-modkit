@@ -81,31 +81,27 @@ def _out_dir(cfg) -> Path:
     return Path(cfg.paths.source_model) / "preview" / "ship"
 
 
-@register("ship", "Check blocks before an export (queue order, what ships, coplanar, fracture, exploded zones): "
-                  "ship check MOD BLOCK ...", add_args=_args, check_game_version=False)
-def cmd_ship(args, env) -> int:
+def run_ship(args, env, *, say=None) -> dict:
+    """The check behind `se2mod ship check`, returning `{"code", ...}`: `queue` (the queue-order FAIL and WARN lines
+    before the run), then `reports` (each block's report with its `problems` and `warnings`, also saved as
+    `<out_dir>/<block>/ship.json`), or `error`, or `queue_command` with `--print-only`. Codes as the command's: 0
+    pass, 1 a FAIL line, 2 the run failed. `say` gets progress lines (default: stderr)."""
     from .. import modelbuild as MB
     from .blender_cmd import blender_argv
+    say = say or (lambda line: print(line, file=sys.stderr))
     try:
         cfg = modarg.resolve(env, args.mod, need="config").config
         if cfg is None:
             raise MB.BuildError(f"{args.mod} is not a mod of a [tool.se2modkit] project; the check needs its paths.")
         script = MB.find_script(cfg.paths.source_model, args.script).resolve()
     except MB.BuildError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
+        return {"code": 2, "error": str(e)}
     before = {w: _queue_check(env, cfg, script, w, {*args.blend, *_last_blends(cfg, w)}) for w in args.blocks}
-    failed = any(q["fail"] for q in before.values())
-    for w, q in before.items():
-        for line in q["fail"]:
-            print(f"FAIL {line}")
-        if failed or args.print_only:
-            for line in q["warn"]:
-                print(f"WARN {line}")
-    if failed:
-        print("FAIL queue order: nothing was queued; fix the order above, then run the check again.")
-        return 1
     out_root = _out_dir(cfg)
+    res: dict = {"code": 0, "queue": before, "out_dir": str(out_root)}
+    if any(q["fail"] for q in before.values()):
+        return {**res, "code": 1, "error": "queue order: nothing was queued; fix the order above, then run the check "
+                                          "again."}
     cache = Path(env.cache_dir) / "ship-check"
     cache.mkdir(parents=True, exist_ok=True)
     status = cache / f"{cfg.name}-{os.getpid()}-{int(time.time())}.json"
@@ -115,13 +111,15 @@ def cmd_ship(args, env) -> int:
     if args.print_only:
         qargv = ["queue", "submit", "--name", name, "--load", "medium", "--timeout", f"{args.timeout:g}",
                  "--env", "SE2MODKIT_OWNS_BLENDER=1", "--", *argv]
-        print("se2mod " + (subprocess.list2cmdline(qargv) if env.platform.startswith("win") else shlex.join(qargv)))
-        return 0
+        res["queue_command"] = "se2mod " + (subprocess.list2cmdline(qargv) if env.platform.startswith("win")
+                                            else shlex.join(qargv))
+        return res
     store = Q.Store(env.cache_dir / "queue")
     job = store.submit(argv, name=name, load=Q.LOADS["medium"], timeout=args.timeout,
                        env={"SE2MODKIT_OWNS_BLENDER": "1"})
     Q.ensure_runner(store)
-    print(f"queued job {job.id}: {name}", file=sys.stderr)
+    res["job_id"] = job.id
+    say(f"queued job {job.id}: {name}")
     code = Q.wait(store, job.id, args.timeout + 120)
     try:
         reports = json.loads(status.read_text(encoding="utf-8"))["ship"] if code == 0 else None
@@ -130,9 +128,8 @@ def cmd_ship(args, env) -> int:
     finally:
         status.unlink(missing_ok=True)
     if reports is None:
-        print(f"error: the ship check job {job.id} failed (exit {code}); see `se2mod queue log {job.id}`.",
-              file=sys.stderr)
-        return 2
+        return {**res, "code": 2, "error": f"the ship check job {job.id} failed (exit {code}); see "
+                                          f"`se2mod queue log {job.id}`."}
     failed = False
     for r in reports:
         # the queue again, now with the .blend files the build really loaded (a save queued while the check ran
@@ -148,9 +145,32 @@ def cmd_ship(args, env) -> int:
         d = out_root / r["block"]
         d.mkdir(parents=True, exist_ok=True)
         (d / "ship.json").write_text(json.dumps(r, indent=1) + "\n", encoding="utf-8", newline="\n")
-    if args.json:
-        print(json.dumps(reports, indent=1))
+        r["ship_json"] = str(d / "ship.json")
+    return {**res, "code": 1 if failed else 0, "reports": reports}
+
+
+@register("ship", "Check blocks before an export (queue order, what ships, coplanar, fracture, exploded zones): "
+                  "ship check MOD BLOCK ...", add_args=_args, check_game_version=False)
+def cmd_ship(args, env) -> int:
+    res = run_ship(args, env)
+    if "queue" in res:
+        failed = any(q["fail"] for q in res["queue"].values())
+        for q in res["queue"].values():
+            for line in q["fail"]:
+                print(f"FAIL {line}")
+            if failed or args.print_only:
+                for line in q["warn"]:
+                    print(f"WARN {line}")
+        if failed:
+            print(f"FAIL {res['error']}")
+            return res["code"]
+    if "error" in res:
+        print(f"error: {res['error']}", file=sys.stderr)
+    elif "queue_command" in res:
+        print(res["queue_command"])
+    elif args.json:
+        print(json.dumps(res["reports"], indent=1))
     else:
-        for r in reports:
+        for r in res["reports"]:
             print("\n".join(SC.summary(r, args.max_key_share)))
-    return 1 if failed else 0
+    return res["code"]

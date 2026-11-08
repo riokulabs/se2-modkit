@@ -75,15 +75,16 @@ def job_argv(env, blend: Path, spec: Path, status: Path) -> list[str]:
             "--python", str(script), "--", str(spec), str(status)]
 
 
-@register("describe", "A block model as numbers (parts, gaps, contacts, mirrors, targets): describe FILE.blend",
-          add_args=_args, check_game_version=False)
-def cmd_describe(args, env) -> int:
+def run_describe(args, env, *, say=None) -> dict:
+    """Queue the describe job, wait for it and return `{"code", ...}`: `report` (parts, gaps, targets) and `text`,
+    or `error`, or `queue_command` with `--print-only`. Codes as the command's: 0 pass, 1 a target failed, 2 the run
+    failed. `say` gets progress lines (default: stderr)."""
+    say = say or (lambda line: print(line, file=sys.stderr))
     try:
         blend = _find_blend(env, args)
         targets = D.parse_targets(args.targets.read_text(encoding="utf-8"), str(args.targets)) if args.targets else []
     except (OSError, D.TargetError, modarg.ModNotFound) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
+        return {"code": 2, "error": str(e)}
     cache = Path(env.cache_dir) / "describe"
     cache.mkdir(parents=True, exist_ok=True)
     stem = cache / f"{blend.stem}-{os.getpid()}-{int(time.time())}"
@@ -94,12 +95,12 @@ def cmd_describe(args, env) -> int:
     name = f"describe:{blend.name}" + (f":{','.join(args.collection)}" if args.collection else "")
     if args.print_only:
         qargv = ["queue", "submit", "--name", name, "--load", "light", "--timeout", f"{args.timeout:g}", "--", *argv]
-        print("se2mod " + (subprocess.list2cmdline(qargv) if env.platform.startswith("win") else shlex.join(qargv)))
-        return 0
+        return {"code": 0, "queue_command": "se2mod " + (subprocess.list2cmdline(qargv)
+                                                         if env.platform.startswith("win") else shlex.join(qargv))}
     store = Q.Store(env.cache_dir / "queue")
     job = store.submit(argv, name=name, load=Q.LOADS["light"], timeout=args.timeout)
     Q.ensure_runner(store)
-    print(f"queued job {job.id}: {name}", file=sys.stderr)
+    say(f"queued job {job.id}: {name}")
     code = Q.wait(store, job.id, args.timeout + 120)
     try:
         rep = json.loads(status.read_text(encoding="utf-8"))["describe"] if code == 0 else None
@@ -109,15 +110,28 @@ def cmd_describe(args, env) -> int:
         status.unlink(missing_ok=True)
         spec.unlink(missing_ok=True)
     if rep is None:
-        print(f"error: the describe job {job.id} failed (exit {code}); see `se2mod queue log {job.id}`.",
-              file=sys.stderr)
-        return 2
+        return {"code": 2, "job_id": job.id,
+                "error": f"the describe job {job.id} failed (exit {code}); see `se2mod queue log {job.id}`."}
     if rep.get("error"):
-        print(f"error: {rep['error']}", file=sys.stderr)
-        return 2
+        return {"code": 2, "job_id": job.id, "error": rep["error"]}
     rep["blend"] = str(blend)
+    res = {"code": 1 if any(not t["ok"] for t in rep.get("targets") or ()) else 0, "job_id": job.id, "report": rep,
+           "text": D.text(rep)}
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(rep, indent=1) + "\n", encoding="utf-8", newline="\n")
-    print("\n".join(D.text(rep)))
-    return 1 if any(not t["ok"] for t in rep.get("targets") or ()) else 0
+        res["json"] = str(args.json)
+    return res
+
+
+@register("describe", "A block model as numbers (parts, gaps, contacts, mirrors, targets): describe FILE.blend",
+          add_args=_args, check_game_version=False)
+def cmd_describe(args, env) -> int:
+    res = run_describe(args, env)
+    if "error" in res:
+        print(f"error: {res['error']}", file=sys.stderr)
+    elif "queue_command" in res:
+        print(res["queue_command"])
+    else:
+        print("\n".join(res["text"]))
+    return res["code"]

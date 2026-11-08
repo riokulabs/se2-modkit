@@ -51,6 +51,7 @@ Three console scripts: `se2mod` (everything below), `se2publish` (the Workshop p
 | Game updates | `se2mod deps`, `se2mod facts` |
 | Publishing | `se2mod publish` |
 | Helpers | `se2mod outline`, `se2mod review-pack` |
+| Agents | `se2mod mcp` (the most used commands as MCP tools over stdio, returning JSON and file paths) |
 
 ## Documentation
 
@@ -66,6 +67,7 @@ Three console scripts: `se2mod` (everything below), `se2publish` (the Workshop p
 | [docs/incremental-builds.md](docs/incremental-builds.md) | What an incremental model build tracks and what to declare |
 | [docs/publish.md](docs/publish.md) | Steam Workshop publisher; read its risk note before a real upload |
 | [docs/diag.md](docs/diag.md) | Diagnostics toolkit |
+| [docs/mcp.md](docs/mcp.md) | `se2mod mcp`: the MCP server, its tools and a client config |
 | [docs/style-guide/](docs/style-guide/00-house-rules.md) | House style guide; its numbers live in the style profiles that `se2mod style check` measures against |
 | [docs/release-checklist.md](docs/release-checklist.md) | Checks that run locally, and tagging a release |
 
