@@ -7,7 +7,6 @@ import json
 import zlib
 
 import pytest
-from texfake import BUNDLES
 
 from se2modkit.preview import sdkmat
 from se2modkit.tex import png, scaffold
@@ -68,7 +67,14 @@ def test_new_set_writes_our_maps_and_comptex(ix, sdk, mod):
     _p, ext = sdkmat.parse_comptex(dest / "Hull_add.comptex")
     assert [ids.get(s) if s else c for s, c in ext] == ["Hull_ao.png", "Hull_emissive.png", "Hull_colormask.png", 1.0]
     raw = json.loads((dest / "Hull_cm.comptex").read_text(encoding="utf-8"))
-    assert raw["$Bundles"] == BUNDLES and raw["$Value"]["Rotation"] == "None"
+    # stamped with today's bundle, so it must use today's source types (the old CompositeTextureSourceModel loads
+    # only through the SDK's migration of old stamps)
+    assert raw["$Bundles"] == scaffold._default_bundles() and raw["$Value"]["Rotation"] == "None"
+    types = {m["$Type"].rsplit("+", 1)[-1] for m in raw["$Value"]["PresetModel"]["TextureSourceModels"]}
+    assert types <= {"SourceTexture", "SourceConstantValue"}
+    raw_add = json.loads((dest / "Hull_add.comptex").read_text(encoding="utf-8"))
+    assert raw_add["$Value"]["PresetModel"]["TextureSourceModels"][-1] == {"$Type": scaffold.SOURCE_CONSTANT,
+                                                                           "ConstantValue": 1.0}
     assert slots == {k: sdkmat._asset_id(str(dest / f"Hull_{s}.comptex.meta"))
                      for k, s in (("ColorMetalTexture", "cm"), ("NormalRoughnessTexture", "nr"),
                                   ("ExtensionsTexture", "add"))}

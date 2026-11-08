@@ -83,7 +83,7 @@ def parse_comptex(path) -> tuple[str | None, list[tuple[str | None, float | None
     v = _load(path).get("$Value") or {}
     out = []
     for s in (v.get("PresetModel") or {}).get("TextureSourceModels") or []:
-        if s.get("SourceSelection") == "Constant":
+        if s.get("SourceSelection") == "Constant" or str(s.get("$Type", "")).endswith("+SourceConstantValue"):
             out.append((None, float(s.get("ConstantValue") or 0.0)))
         else:
             out.append((parse_guid(s.get("Texture")), None))

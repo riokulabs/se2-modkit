@@ -173,3 +173,17 @@ def test_configure_switches_source_maps(monkeypatch):
 def test_presets_dir_is_beside_the_vanilla_assets():
     p = Path(mats._presets_dir("/sdk/GameData/Vanilla/Assets/BlockMaterials"))
     assert p.parts[-5:] == ("GameData", "Engine", "Assets", "Materials", "Presets")
+
+
+def test_parse_comptex_reads_the_current_source_types(tmp_path):
+    p = tmp_path / "x_add.comptex"
+    pre = "VRage:Keen.VRage.ContentPipeline.Textures.Composite.CompositeTexturePresetModel+"
+    p.write_text(json.dumps({"$Value": {"PresetReference": "{G}aa524acf-9017-43ff-a5d8-48fcbc48cade",
+                                        "PresetModel": {"TextureSourceModels": [
+                                            {"$Type": pre + "SourceTexture", "Texture": "{G}dcbb1667-3e2f-460f-8ad1-d27509c50908"},
+                                            {"$Type": pre + "SourceTexture", "Texture": None},
+                                            {"$Type": pre + "SourceConstantValue", "ConstantValue": 1}]}}}),
+                 encoding="utf-8")
+    preset, sources = sdkmat.parse_comptex(p)
+    assert preset == "aa524acf-9017-43ff-a5d8-48fcbc48cade"
+    assert sources == [("dcbb1667-3e2f-460f-8ad1-d27509c50908", None), (None, None), (None, 1.0)]
