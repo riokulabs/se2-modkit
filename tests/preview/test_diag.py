@@ -172,6 +172,16 @@ def test_a_block_bigger_than_the_screen_shows_only_the_screen_sized_part(tmp_pat
     assert abs(w / h - diag.SCREEN[0] / diag.SCREEN[1]) < 0.05   # a screen-shaped window, not the whole block
 
 
+def test_a_block_taller_than_the_screen_keeps_the_window_screen_shaped(tmp_path):
+    info = _info(tmp_path)
+    info["distance"]["targets"] = [{"m": 10, "px": [150, 1200]}]   # overflows the screen on one axis only
+    (near,) = diag.distance_thumbs(tmp_path, info["distance"])
+    w, h = near["image"].size
+    assert near["screen"]
+    assert w <= diag.SCREEN[0] + 2 and h <= diag.SCREEN[1] + 2
+    assert abs(w / h - diag.SCREEN[0] / diag.SCREEN[1]) < 0.05   # still a screen-shaped window, not a block sliver
+
+
 # --------------------------------------------------------------------------- reference
 
 
