@@ -662,6 +662,12 @@ def drawable_slot(slot_name) -> bool:
     return is_keen_slot(slot_name) or sdk_material(sdk_def_name(slot_name)) is not None
 
 
+def _paintable(mat) -> bool:
+    """Whether player paint shows on an SDK material: a color mask map, or a constant mask above zero (as
+    `sdk_pbr_mat` applies it), so its preview key must carry the paint."""
+    return bool(mat.path("colormask")) or mat.value("colormask", 0.0) > 0
+
+
 def slot_key(slot_name, paint="keen"):
     """Preview key of a Keen slot: `SDK:<definition>[:<paint>]` when its SDK source maps can be drawn, else the flat
     stand-in key of `keen_key`. An emissive stand-in takes the source maps only when the SDK has an emissive mask to
@@ -670,7 +676,7 @@ def slot_key(slot_name, paint="keen"):
         name = sdk_def_name(slot_name)
         mat = sdk_material(name)
         if mat is not None:
-            return f"SDK:{name}:{paint}" if mat.path("colormask") else f"SDK:{name}"
+            return f"SDK:{name}:{paint}" if _paintable(mat) else f"SDK:{name}"
     std = keen_key(slot_name, paint)
     base = std.partition(":")[0]
     if not (base == "PMC" or (base in SIMPLE and base not in SDK_KEEP) or base in EMIS):
@@ -681,7 +687,7 @@ def slot_key(slot_name, paint="keen"):
         return std
     if base in EMIS and EMIS[base][2] is not None and not mat.path("emissive"):
         return std
-    return f"SDK:{name}:{paint}" if mat.path("colormask") else f"SDK:{name}"
+    return f"SDK:{name}:{paint}" if _paintable(mat) else f"SDK:{name}"
 
 
 def _map(nt, path, noncolor):

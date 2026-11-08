@@ -12,15 +12,16 @@ packs and compresses the sources into DDS at build time.
     PNG (or at the same constant or default the vanilla one uses);
   - a minimal `.meta` beside every new file and folder, so the `.comptex` files can name the PNGs by GUID.
 
-What is taken from the vanilla material is its layout only: the preset GUIDs, the order of inputs and the version
-stamps of the file format. No vanilla image is read, copied or referenced.
+What is taken from the vanilla material is its layout only: the preset GUIDs, the order of inputs and its constants.
+New files are stamped with the newest tested game, whatever the vanilla files carry, because the current source types
+load only under a current stamp. No vanilla image is read, copied or referenced.
 """
 
 from __future__ import annotations
 
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..defs.envelope import envelope, write_json
@@ -30,7 +31,10 @@ from . import png
 __all__ = ["AUTHORED", "COMPTEX_TYPE", "META_TYPE", "Packed", "SetError", "flat_value", "layout", "new_set"]
 
 COMPTEX_TYPE = "VRage:Keen.VRage.ContentPipeline.Textures.Composite.CompositeTextureModel"
-SOURCE_TYPE = "VRage:Keen.VRage.ContentPipeline.Textures.Composite.CompositeTextureSourceModel"
+# The current source types; the older CompositeTextureSourceModel loads only in files stamped with an old VRage
+# bundle, which the Mod SDK migrates, so a new file stamped with today's bundle must use these.
+SOURCE_TEXTURE = "VRage:Keen.VRage.ContentPipeline.Textures.Composite.CompositeTexturePresetModel+SourceTexture"
+SOURCE_CONSTANT = "VRage:Keen.VRage.ContentPipeline.Textures.Composite.CompositeTexturePresetModel+SourceConstantValue"
 META_TYPE = "VRage:Keen.VRage.ContentPipeline.Metafiles.MetaData"
 AUTHORED = ("albedo", "metal", "normal", "roughness", "ao", "emissive", "colormask")   # always get a map
 RGB_ROLES = ("albedo", "normal")
@@ -49,15 +53,6 @@ class Packed:
     suffix: str
     preset: str                                    # preset GUID
     inputs: list[tuple[str, float, str, float]]    # (role, preset default, "texture" | "constant" | "none", constant)
-    bundles: dict = field(default_factory=dict)    # the vanilla .comptex's $Bundles (format version stamps)
-
-
-def _bundles(path: str | Path) -> dict:
-    try:
-        b = sdkmat._load(path).get("$Bundles")
-    except (OSError, ValueError):
-        return {}
-    return b if isinstance(b, dict) else {}
 
 
 def layout(ix: sdkmat.Index, like: str) -> list[Packed]:
@@ -88,7 +83,7 @@ def layout(ix: sdkmat.Index, like: str) -> list[Packed]:
             inputs.append((role, default, kind, const or 0.0))
         stem = Path(ct).stem
         suffix = stem[len(like) + 1:] if stem.startswith(like + "_") else SLOT_SUFFIX.get(slot, slot.lower())
-        out.append(Packed(slot, suffix or SLOT_SUFFIX.get(slot, slot.lower()), preset, inputs, _bundles(ct)))
+        out.append(Packed(slot, suffix or SLOT_SUFFIX.get(slot, slot.lower()), preset, inputs))
     if not out:
         raise SetError(f"The vanilla material {like!r} has no packed textures whose preset the Mod SDK provides.")
     return out
@@ -126,7 +121,7 @@ def new_set(mod: Path, name: str, like: str, ix: sdkmat.Index, *, size: int = 10
             bundles: dict | None = None) -> tuple[Path, dict[str, str], list[Path]]:
     """Write the set; returns (set folder, {material slot: our .comptex GUID}, files written).
 
-    `bundles` stamps the new `.meta` files (default: the vanilla `.comptex` files' own stamps)."""
+    `bundles` stamps the new `.meta` files (default: the newest tested game's stamps, as the `.comptex` files)."""
     if not _NAME.match(name):
         raise SetError(f"Texture set name {name!r} must start with a letter and use only letters, digits and _.")
     if size < 4 or size & (size - 1):
@@ -139,7 +134,7 @@ def new_set(mod: Path, name: str, like: str, ix: sdkmat.Index, *, size: int = 10
     dest = assets / folder / name
     if dest.exists():
         raise SetError(f"{dest.relative_to(mod).as_posix()} already exists; pick another name or remove it first.")
-    meta_bundles = bundles or next((p.bundles for p in packs if p.bundles), None) or _default_bundles()
+    meta_bundles = bundles or _default_bundles()
     written: list[Path] = []
     d = assets
     for part in (*Path(folder).parts, name):     # folders need a .meta too ("File with unreadable parent")
@@ -168,18 +163,15 @@ def new_set(mod: Path, name: str, like: str, ix: sdkmat.Index, *, size: int = 10
         models = []
         for role, _default, kind, const in p.inputs:
             if role in maps:
-                models.append({"$Type": SOURCE_TYPE, "Texture": "{G}" + maps[role], "ConstantValue": 0,
-                               "SourceSelection": "Texture"})
+                models.append({"$Type": SOURCE_TEXTURE, "Texture": "{G}" + maps[role]})
             elif kind == "constant":
-                models.append({"$Type": SOURCE_TYPE, "Texture": None, "ConstantValue": const,
-                               "SourceSelection": "Constant"})
+                models.append({"$Type": SOURCE_CONSTANT, "ConstantValue": const})
             else:
-                models.append({"$Type": SOURCE_TYPE, "Texture": None, "ConstantValue": 0,
-                               "SourceSelection": "Texture"})
+                models.append({"$Type": SOURCE_TEXTURE, "Texture": None})
         f = dest / f"{name}_{p.suffix}.comptex"
         write_json(f, envelope(COMPTEX_TYPE, {"PresetReference": "{G}" + p.preset, "Rotation": "None", "Flip": "None",
                                               "PresetModel": {"TextureSourceModels": models}},
-                               p.bundles or meta_bundles))
+                               _default_bundles()))
         slots[p.slot] = _meta(f, meta_bundles)
         written += [f, f.with_name(f.name + ".meta")]
     return dest, slots, written
