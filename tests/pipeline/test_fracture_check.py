@@ -39,9 +39,11 @@ def test_a_large_plain_zone_does_not_fail():
     assert FC.problems(_report()) == []      # Fracture_02 holds 82 % but is not critical
 
 
-def test_loose_geometry_fails_by_part():
-    (line,) = FC.problems(_report(loose={"pipe": {"verts": 22199, "edges": 3}}))
-    assert "pipe" in line and "22199" in line and "3" in line
+def test_loose_geometry_warns_by_part_since_the_export_drops_it():
+    r = _report(loose={"pipe": {"verts": 22199, "edges": 3}})
+    assert FC.problems(r) == []
+    (line,) = [w for w in FC.warnings(r) if "pipe" in w]
+    assert "22199" in line and "3 loose edges" in line and "drops" in line
 
 
 def test_an_error_is_a_fail_line():

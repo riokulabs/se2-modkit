@@ -287,8 +287,24 @@ def export_block(hooks, spec, lods, cobjs, boxes, ops, subparts=None, mid=None, 
     return man
 
 
+def _face_bounds(objs):
+    """(lo, hi) world bounds of the vertices that belong to a face: loose edges and vertices never ship (merged and
+    keep_zone drop them), so they must not size the block either."""
+    pts = []
+    for ob in objs:
+        if ob.type != "MESH":
+            continue
+        mw, vs = ob.matrix_world, ob.data.vertices
+        used = {i for p in ob.data.polygons for i in p.vertices}
+        pts += [mw @ vs[i].co for i in used]
+    if not pts:
+        return OB.bounds(objs)
+    return (tuple(round(min(p[k] for p in pts), 4) for k in range(3)),      # rounded like OB.bounds
+            tuple(round(max(p[k] for p in pts), 4) for k in range(3)))
+
+
 def _size(objs):
-    lo, hi = OB.bounds(objs)
+    lo, hi = _face_bounds(objs)
     return tuple(round(h - l, 5) for l, h in zip(lo, hi))
 
 
@@ -371,7 +387,7 @@ def _export_unfractured_damaged(hooks, spec, lods, boxes, ops, tmp, man, fr_lods
     triangles (within the fractured budget) and dented with the family's `hooks.dent`, seeded by the block name; the
     colliders a copy of the Fractured model's plain physics boxes. Sets man["damaged"]; returns the collider objects."""
     fam = spec.family
-    lo, hi = OB.bounds([o for o in lods[0][1] if o.type == "MESH"])
+    lo, hi = _face_bounds(lods[0][1])
     budget = FR.fracture_budget(tuple(man["nonfractured"]["size"]), _tris(fr_lods[0]), len(fr_lods),
                                 FR.fracture_budget_x(hooks, fam))
     dm, stats, dm_size = {"lods": []}, {}, None
@@ -633,9 +649,11 @@ def keep_zone(ob, zi, role):
     drop = [f for f in bm.faces if f[lay] != zi + 1 or f[rl] != ri]
     if drop:
         bmesh.ops.delete(bm, geom=drop, context="FACES")
-    loose = [e for e in bm.edges if not e.link_faces]                  # the source's own loose edges and verts would
-    if loose:                                                          # ride along in every zone's copy (and stretch
-        bmesh.ops.delete(bm, geom=loose, context="EDGES")              # its bounds across the block)
+    # The source's own loose edges and verts (cut_lod joins without merged) would ride along in every zone's copy and
+    # stretch its bounds across the block; the faces cut away here leave more behind.
+    loose = [e for e in bm.edges if not e.link_faces]
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context="EDGES")
     loose = [v for v in bm.verts if not v.link_faces]
     if loose:
         bmesh.ops.delete(bm, geom=loose, context="VERTS")
@@ -862,7 +880,7 @@ def _export_planned(hooks, spec, lods, plan, ops, tmp, man, fr_dir, dm_dir, made
                                          bin=f"{spec.name}_Fractured_collision.bin")
 
     # ---------------------------------------------------------------- Damaged: the same, densified and dented
-    lo, hi = OB.bounds([o for o in lods[0][1] if o.type == "MESH"])
+    lo, hi = _face_bounds(lods[0][1])
     dm = {"lods": []}
     dm_objs_all = []
     stats = {}

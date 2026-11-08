@@ -105,8 +105,27 @@ def merged(objs, name, coll):
     if not dups:
         return None
     ob = OB.join(dups, name)
+    drop_loose(ob)
     compact_materials(ob)
     return ob
+
+
+def drop_loose(ob):
+    """Delete ob's edges and vertices that belong to no face. They never render, but they ride into every exported
+    copy (each fracture zone, each LOD) and stretch its bounds; a build can leave a few behind."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    edges = [e for e in bm.edges if not e.link_faces]
+    if edges:
+        bmesh.ops.delete(bm, geom=edges, context="EDGES")
+    verts = [v for v in bm.verts if not v.link_faces]
+    if verts:
+        bmesh.ops.delete(bm, geom=verts, context="VERTS")
+    if edges or verts:
+        bm.to_mesh(ob.data)
+    bm.free()
+    return len(edges), len(verts)
 
 
 def remove_objects(objs):

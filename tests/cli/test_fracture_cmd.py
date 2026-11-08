@@ -63,10 +63,11 @@ def test_a_passing_block_exits_0_and_queues_a_headless_check(mod, queued, capsys
     assert "Fracture_01" in out and "FAIL" not in out
 
 
-def test_loose_geometry_exits_1(mod, queued, capsys):
+def test_loose_geometry_warns_and_passes(mod, queued, capsys):
     queued["reports"] = [_report(loose={"pipe": {"verts": 5, "edges": 0}})]
-    assert cli.main(["fracture", "check", "ToyMod", "XX_Box"]) == 1
-    assert capsys.readouterr().out.count("FAIL") == 1
+    assert cli.main(["fracture", "check", "ToyMod", "XX_Box"]) == 0     # the export drops it
+    out = capsys.readouterr().out
+    assert "FAIL" not in out and "WARN" in out and "pipe" in out
 
 
 def test_a_large_key_zone_warns_unless_a_limit_is_given(mod, queued, capsys):

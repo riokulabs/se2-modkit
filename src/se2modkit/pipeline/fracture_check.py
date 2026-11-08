@@ -7,11 +7,13 @@ LOD0), "loose": {part: {"verts", "edges"}} (LOD0 geometry with no face), "zones"
 "snap_mm" (its snap window, 0: fixed), "moved_mm" (how far snap_seams moved it), "clear_mm" (from its plane to the
 nearest LOD0 vertex of its zones, at most fracture_probe.NEAR)}]}.
 
-Fail lines: an error (the plan, the cut or the colliders could not be made), any loose vertex or edge in LOD0 (it
-rides into every zone's copy), more cell groups than the game allows, and, when a limit is given, a critical zone
+Fail lines: an error (the plan, the cut or the colliders could not be made), more cell groups than the game allows,
+and, when a limit is given, a critical zone
 holding more than `max_key_share` of the block's health. Without a limit that last one is a warning at MAX_KEY_SHARE:
 a critical zone counts twice, so a large one makes the block hard to break, but a heavy critical core can be the
-design; the bar belongs in the mod's kit, not here.
+design; the bar belongs in the mod's kit, not here. Loose vertices or edges in LOD0 are a warning: the export drops
+them (`standins.merged` for the whole-block and simple models, `export.keep_zone` for the planned fracture zones) and
+sizes the block from face vertices only, so they never ship, but a source that carries many is worth a look.
 """
 
 from __future__ import annotations
@@ -30,9 +32,17 @@ def _heavy_zones(report: dict, limit: float) -> list[str]:
             if z.get("critical") and z.get("share", 0.0) > limit]
 
 
+def _loose(report: dict) -> list[str]:
+    name = report["block"]
+    return [f"{name}: part {part} has {n.get('verts', 0)} loose vertices and {n.get('edges', 0)} loose edges in "
+            "LOD0 (the export drops them)" for part, n in sorted((report.get("loose") or {}).items())
+            if n.get("verts") or n.get("edges")]
+
+
 def warnings(report: dict, max_key_share: float | None = None) -> list[str]:
-    """Lines worth a look that do not fail: critical zones over MAX_KEY_SHARE when no limit is given."""
-    return [] if max_key_share is not None else _heavy_zones(report, MAX_KEY_SHARE)
+    """Lines worth a look that do not fail: loose LOD0 geometry, and critical zones over MAX_KEY_SHARE when no limit
+    is given."""
+    return _loose(report) + ([] if max_key_share is not None else _heavy_zones(report, MAX_KEY_SHARE))
 
 
 def problems(report: dict, max_key_share: float | None = None) -> list[str]:
@@ -43,10 +53,6 @@ def problems(report: dict, max_key_share: float | None = None) -> list[str]:
         out.append(f"{name}: {report.get('error') or 'the check failed'}")
     if max_key_share is not None:
         out += _heavy_zones(report, max_key_share)
-    for part, n in sorted((report.get("loose") or {}).items()):
-        if n.get("verts") or n.get("edges"):
-            out.append(f"{name}: part {part} has {n.get('verts', 0)} loose vertices and {n.get('edges', 0)} loose "
-                       "edges in LOD0: delete them in the model")
     groups = report.get("cell_groups")
     if groups:
         err = limits.cell_groups_error(name, groups)
