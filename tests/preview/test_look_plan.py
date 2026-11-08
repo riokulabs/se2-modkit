@@ -281,3 +281,19 @@ def test_a_failed_diagnostic_is_a_warning_not_a_problem(tmp_path):
     (out / "report.json").write_text(json.dumps({"diag": {"json": "diag/diag.json"}}))
     report = look.finish(out, block="XX", stage="look", rnd=1)
     assert report["problems"] == [] and report["warnings"][0].startswith("diagnostic views:")
+
+
+def test_any_error_drawing_the_diagnostic_keeps_the_set(tmp_path, monkeypatch):
+    from se2modkit.preview import diag as DG
+    out = tmp_path / "r1"
+    out.mkdir()
+    (out / "report.json").write_text(json.dumps({}))
+    for v in look.views_for("look"):
+        _png(out / f"{shots.shot_name('XX', 'look', 1, v)}.png")
+
+    def boom(*a, **k):
+        raise TypeError("unexpected")
+    monkeypatch.setattr(DG, "finish", boom)
+    report = look.finish(out, block="XX", stage="look", rnd=1)
+    assert report["problems"] == [] and report["warnings"] == ["diagnostic views: TypeError: unexpected"]
+    assert (out / "report.json").is_file()

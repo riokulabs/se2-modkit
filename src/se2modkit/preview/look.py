@@ -184,7 +184,7 @@ def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = Fals
     from . import diag as DG
     try:
         warnings = DG.finish(out, report, reference=reference, reference_view=reference_view)
-    except (PreviewError, OSError, ValueError, KeyError) as e:   # a torn diag.json or tile: say so, keep the set
+    except Exception as e:   # any failure drawing the diagnostic (a torn diag.json, Pillow, a bad reference): say so, keep the set
         warnings = [f"diagnostic views: {type(e).__name__}: {e}"]
     if warnings:
         report["warnings"] = warnings
