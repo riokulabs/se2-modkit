@@ -72,17 +72,17 @@ it could not find; it runs through the queue and never changes the install or th
 the folder (the relinked copy when there is one) to your Blender preferences, also through the queue; it is never done
 unless asked. `--print-only` prints what would be unpacked and the queue commands, and changes nothing.
 
-`se2mod fracture check MOD BLOCK ... [--max-key-share F] [--json]` checks a block's fracture before an export. It
-builds the block in a headless Blender through the job queue (a medium job), then plans its fracture, cuts LOD0 and
-fits the zone colliders the way the export does (`src/se2modkit/pipeline/fracture_probe.py`), without writing any
-model, report or build fragment. It prints each zone's health share (the number the export writes to `export.json`),
-where each seam landed (how far it snapped and how close the nearest vertex is) and the cell groups. It exits 1 on a
-plan, cut or collider that can't be made, too many cell groups, or, given `--max-key-share`, a critical zone over that
-share of the health; without it such a zone is a WARN line, since a heavy critical core can be the design. Loose
-vertices or edges in LOD0 are a WARN line too: the export drops them from every model it writes. Most of its time
-is the block's own build: seconds for a small block, minutes for a large drive, against tens of minutes for an export. It takes the export's first cut only and leaves out its LOD-count
-and fractured triangle budget checks, so a block can still pass here and fail the export on those. `--check-fracture`
-on the build script does the same in Blender.
+`se2mod fracture check MOD BLOCK ... [--max-key-share F] [--json]` checks a block's fracture before an export. It builds
+the block in a headless Blender through the job queue (a medium job), then plans its fracture, cuts LOD0 and fits the
+zone colliders the way the export does (`src/se2modkit/pipeline/fracture_probe.py`), without writing any model, report
+or build fragment. It prints each zone's health share (the number the export writes to `export.json`), where each seam
+landed (how far it snapped and how close the nearest vertex is) and the cell groups. It exits 1 on a plan, cut or
+collider that can't be made, too many cell groups, or, given `--max-key-share`, a critical zone over that share of the
+health; without it such a zone is a WARN line, since a heavy critical core can be the design. Loose vertices or edges in
+LOD0 are a WARN line too: the export drops them from every model it writes. Most of its time is the block's own build:
+seconds for a small block, minutes for a large drive, against tens of minutes for an export. It takes the export's first
+cut only and leaves out its LOD-count and fractured triangle budget checks, so a block can still pass here and fail the
+export on those. `--check-fracture` on the build script does the same in Blender.
 
 `se2mod ship check MOD BLOCK ... [--max-key-share F] [--blend FILE] [--json] [--print-only]` is the one check to run
 before a drive's export, read-only. First, before anything is queued, the queue order
