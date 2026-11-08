@@ -196,20 +196,31 @@ def _parts_tile(im, parts, font):
 
 def distance_thumbs(folder: Path, dist: dict) -> list[dict]:
     """The 3/4 front shot cropped round the block and resized so the block is as many pixels as it would be on a
-    1080p screen at each distance: [{"m", "px", "image"}]."""
+    1080p screen at each distance: [{"m", "px", "image", "upscaled", "screen"}]. A block bigger than the screen at a
+    distance is cut to the screen-sized part a player would see (`screen` true), so a big block's close read shows."""
     Image, *_ = _import_pillow()
     src = Image.open(Path(folder) / dist["shot"]).convert("RGB")
     x0, y0, x1, y1 = dist["rect"]
     rw, rh = max(1, x1 - x0), max(1, y1 - y0)
     mx, my = rw * 0.1, rh * 0.1
-    crop = src.crop((max(0, round(x0 - mx)), max(0, round(y0 - my)), min(src.width, round(x1 + mx)),
-                     min(src.height, round(y1 + my))))
+    crop_x0, crop_y0 = max(0, round(x0 - mx)), max(0, round(y0 - my))
+    crop = src.crop((crop_x0, crop_y0, min(src.width, round(x1 + mx)), min(src.height, round(y1 + my))))
     out = []
     for t in dist["targets"]:
         tw, th = t["px"]
         s = math.sqrt(max(tw, 1) * max(th, 1) / (rw * rh))
-        size = (max(1, round(crop.width * s)), max(1, round(crop.height * s)))
-        out.append({"m": t["m"], "px": t["px"], "image": crop.resize(size, Image.LANCZOS), "upscaled": s > 1})
+        view, screen = crop, tw > SCREEN[0] or th > SCREEN[1]
+        if screen:   # the block overflows the screen: keep only the part a player sees, centered on the block
+            cx, cy = (x0 + x1) / 2 - crop_x0, (y0 + y1) / 2 - crop_y0
+            ww, wh = min(crop.width, SCREEN[0] / s), min(crop.height, SCREEN[1] / s)
+            l = min(max(0.0, cx - ww / 2), crop.width - ww)
+            u = min(max(0.0, cy - wh / 2), crop.height - wh)
+            view = crop.crop((round(l), round(u), round(l + ww), round(u + wh)))
+        size = (max(1, round(view.width * s)), max(1, round(view.height * s)))
+        if screen:   # the window was rounded to whole source pixels; never draw past the screen
+            size = (min(size[0], SCREEN[0]), min(size[1], SCREEN[1]))
+        out.append({"m": t["m"], "px": t["px"], "image": view.resize(size, Image.LANCZOS), "upscaled": s > 1,
+                    "screen": screen})
     return out
 
 
@@ -234,6 +245,8 @@ def _distance_strip(folder, dist, font, zoom_h=220):
     for t, im, z in cells:
         strip.paste(im, (x, 24 + (h - 40 - im.height) // 2))
         note = f"{t['m']} m: {t['px'][0]:.0f} x {t['px'][1]:.0f} px" + (" (upscaled)" if t["upscaled"] else "")
+        if t.get("screen"):
+            note += ", fills the screen: what a player sees"
         if "shown" in t:
             note += f", shown at {t['shown']:.0%}"
         if z:

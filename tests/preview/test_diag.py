@@ -162,6 +162,16 @@ def test_a_block_bigger_than_the_screen_is_drawn_capped_in_the_strip(tmp_path):
     assert strip.height <= diag.STRIP_CAP + 40
 
 
+def test_a_block_bigger_than_the_screen_shows_only_the_screen_sized_part(tmp_path):
+    info = _info(tmp_path)
+    info["distance"]["targets"] = [{"m": 10, "px": [2000, 2200]}, {"m": 50, "px": [40, 44]}]
+    near, far = diag.distance_thumbs(tmp_path, info["distance"])
+    assert near["screen"] and not far["screen"]
+    w, h = near["image"].size
+    assert w <= diag.SCREEN[0] + 2 and h <= diag.SCREEN[1] + 2
+    assert abs(w / h - diag.SCREEN[0] / diag.SCREEN[1]) < 0.05   # a screen-shaped window, not the whole block
+
+
 # --------------------------------------------------------------------------- reference
 
 
