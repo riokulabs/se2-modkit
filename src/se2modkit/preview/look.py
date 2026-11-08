@@ -69,7 +69,7 @@ def material_key(name: str, table: dict) -> tuple[str, bool]:
     base = name.split(".")[0]
     if base in table:
         return mats.slot_key(table[base]), False
-    if mats.is_keen_slot(name):
+    if mats.drawable_slot(name):
         return mats.slot_key(name), False
     return UNMAPPED, True
 
@@ -106,10 +106,11 @@ def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, 
         raise PreviewError(f"no such file: {source}")
     kind = source_kind(source)
     from . import mats
-    bad = sorted(f"{k}={v}" for k, v in (materials or {}).items() if not mats.is_keen_slot(v))
+    bad = sorted(f"{k}={v}" for k, v in (materials or {}).items() if not mats.drawable_slot(v))
     if bad:
         raise PreviewError(f"not a Keen material slot: {', '.join(bad)} (use slot names such as PaintedMetalDarker, "
-                           "MetalDull, BrushedMetal).")
+                           "MetalDull, BrushedMetal; a vanilla slot with no stand-in, such as HydrogenThrusterCone, "
+                           "needs the Mod SDK's source maps).")
     lookdev.set_spec(set_name)
     lookdev.mount_rotation(mount_face)
     return {

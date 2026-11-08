@@ -656,10 +656,21 @@ def sdk_material(def_name):
     return mat
 
 
+def drawable_slot(slot_name) -> bool:
+    """True when a preview can draw this material name: a slot `keen_key` knows, or any other vanilla slot the SDK
+    has source maps for (the hydrogen thruster cone has no stand-in but its own textures)."""
+    return is_keen_slot(slot_name) or sdk_material(sdk_def_name(slot_name)) is not None
+
+
 def slot_key(slot_name, paint="keen"):
     """Preview key of a Keen slot: `SDK:<definition>[:<paint>]` when its SDK source maps can be drawn, else the flat
     stand-in key of `keen_key`. An emissive stand-in takes the source maps only when the SDK has an emissive mask to
-    light (a screen with no mask keeps its glowing stand-in)."""
+    light (a screen with no mask keeps its glowing stand-in). A slot with no stand-in is drawn from its SDK maps."""
+    if not is_keen_slot(slot_name):
+        name = sdk_def_name(slot_name)
+        mat = sdk_material(name)
+        if mat is not None:
+            return f"SDK:{name}:{paint}" if mat.path("colormask") else f"SDK:{name}"
     std = keen_key(slot_name, paint)
     base = std.partition(":")[0]
     if not (base == "PMC" or (base in SIMPLE and base not in SDK_KEEP) or base in EMIS):
