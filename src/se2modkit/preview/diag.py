@@ -370,7 +370,7 @@ def compose(folder: Path) -> dict:
         for c in cells:
             c.thumbnail((ORTHO[0] + 180, ORTHO[1] + 180))
         _save(_stack([cells], bg=WHITE), folder / "ortho.png", "PNG")
-    raw = sorted(str(p.relative_to(folder)) for p in (folder / "diag").iterdir() if p.is_file())
+    raw = sorted(p.relative_to(folder).as_posix() for p in (folder / "diag").iterdir() if p.is_file())
     return {"sheet": "diag.png", "ortho": "ortho.png" if cells else None, "files": raw}
 
 
