@@ -111,6 +111,7 @@ def test_json_prints_the_reports(mod, queued, capsys):
     assert cli.main(["ship", "check", "ToyMod", "XX_Box", "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data[0]["block"] == "XX_Box" and data[0]["problems"] == [] and "queue" in data[0]
+    assert "ship_json" not in data[0]
 
 
 def test_print_only_queues_nothing(mod, queued, capsys):

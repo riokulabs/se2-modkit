@@ -126,7 +126,8 @@ def run_look(args: argparse.Namespace, env: SE2Env, *, say=None) -> dict:
     res.update(set_dir=str(out), job_file=str(job_file), round=rnd)
     script = Path(look.__file__).with_name("look_run.py")
     argv = blender_argv(env, script, [str(job_file)], mod_source=package_root(env), windowed=False)
-    argv[1:1] = ["--gpu-backend", "vulkan", "--gpu-device", "{gpu}"]
+    # never run scripts saved in the working file (drivers, registered text blocks)
+    argv[1:1] = ["--disable-autoexec", "--gpu-backend", "vulkan", "--gpu-device", "{gpu}"]
     name = f"look {args.block} {args.stage} r{rnd} ({args.set_name})"
     priority = _has_priority_lane()
     if args.print_only:

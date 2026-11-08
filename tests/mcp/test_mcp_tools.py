@@ -109,6 +109,7 @@ def test_look_print_only_path_is_real(box, tmp_path, monkeypatch):
     assert res["ok"] and res["job_id"] == 11
     assert Path(res["set_dir"]).parts[-2:] == ("XX_Drive", "r1") and Path(res["job_file"]).is_file()
     assert "{gpu}" in submitted["argv"] and submitted["kw"]["load"] == Q.LOADS["medium"]
+    assert submitted["argv"][1] == "--disable-autoexec"      # never runs scripts saved in the working file
 
 
 def test_bad_look_arguments_come_back_as_an_error(box, tmp_path):
@@ -140,7 +141,7 @@ def test_look_finish_and_geocheck_read_the_set(box, tmp_path, monkeypatch):
     assert box.geocheck(str(tmp_path / "nothing"))["ok"] is False
 
 
-def test_describe_and_ship_arguments(box, monkeypatch):
+def test_describe_and_ship_arguments(box, monkeypatch, toymod):
     seen = {}
 
     def run_describe(args, env, *, say=None):
@@ -158,7 +159,7 @@ def test_describe_and_ship_arguments(box, monkeypatch):
     assert res["ok"] is False and res["code"] == 1 and "text" not in res and res["report"]["targets"]
     res = box.ship_check("ToyMod", ["XX_A", "XX_B*"], max_key_share=0.5, blend=["a.blend"])
     s = seen["s"]
-    assert s.mod == "ToyMod" and s.blocks == ["XX_A", "XX_B*"] and s.max_key_share == 0.5
+    assert s.mod == str(toymod.resolve()) and s.blocks == ["XX_A", "XX_B*"] and s.max_key_share == 0.5
     assert s.blend == [Path("a.blend")] and s.timeout == 1800
     assert res["ok"] and res["reports"][0]["block"] == "XX_A"
     assert box.ship_check("ToyMod", [])["ok"] is False
@@ -296,21 +297,52 @@ def test_deps_check_returns_findings_and_keeps_stdout_clean(box, monkeypatch, ca
 # -- what a client may write and run ---------------------------------------------------------------------------------
 
 @pytest.fixture
-def toymod(tmp_path):
-    root = tmp_path / "Toy Mod"
+def toymod(env, tmp_path, monkeypatch):
+    """A mod found by name in a workspace mods folder."""
+    monkeypatch.setenv("SE2_WORKSPACE", str(tmp_path / "ws"))
+    root = tmp_path / "ws" / "mods" / "ToyMod"
     (root / "Source" / "Model").mkdir(parents=True)
     (root / "ToyMod.vrgproj").write_text("{}", encoding="utf-8")
     (root / "pyproject.toml").write_text('[tool.se2modkit]\nmod_name = "ToyMod"\nprefix = "XX_"\n', encoding="utf-8")
     return root
 
 
-def test_ship_check_takes_no_script_and_refuses_option_like_names(box, monkeypatch):
+def test_mods_are_taken_by_name_only(box, monkeypatch, tmp_path, toymod):
+    """A mod path would let a client run any folder's build script (ship check) or widen where tools write."""
+    seen = []
+    monkeypatch.setattr("se2modkit.cli.ship_cmd.run_ship",
+                        lambda args, env, *, say=None: seen.append(args.mod) or {"code": 0, "queue": {}})
+    monkeypatch.setattr("se2modkit.cli.look_cmd.run_look",
+                        lambda args, env, *, say=None: seen.append(args.mod) or {"code": 0, "warnings": []})
+    monkeypatch.setattr("se2modkit.cli.describe_cmd.run_describe",
+                        lambda args, env, *, say=None: seen.append(args.mod) or {"code": 0})
+    (tmp_path / "Stray").mkdir()          # a folder here with a plain name is not a mod either
+    for mod in (str(toymod), "ws/mods/ToyMod", "./ToyMod", "~/ToyMod", "Stray", "..", "Nope"):
+        for res in (box.ship_check(mod, ["XX_A"]), box.look("a.glb", "XX_A", mod=mod),
+                    box.describe("t.blend", mod=mod)):
+            assert res["ok"] is False and "mod" in res["error"], (mod, res)
+    assert seen == []
+    assert box.ship_check("ToyMod", ["XX_A"])["ok"] and box.look("a.glb", "XX_A", mod="ToyMod")["ok"]
+    assert box.describe("t.blend", mod="ToyMod")["ok"]
+    assert seen == [str(toymod.resolve())] * 3
+
+
+def test_ship_check_reports_name_their_ship_json(box, monkeypatch, tmp_path, toymod):
+    out = toymod / "Source" / "Model" / "preview" / "ship"
+    monkeypatch.setattr("se2modkit.cli.ship_cmd.run_ship", lambda args, env, *, say=None: {
+        "code": 0, "queue": {}, "out_dir": str(out), "reports": [{"block": "XX_A", "problems": []}]})
+    res = box.ship_check("ToyMod", ["XX_A"])
+    assert res["reports"][0]["ship_json"] == str(out / "XX_A" / "ship.json")
+
+
+def test_ship_check_takes_no_script_and_refuses_option_like_names(box, monkeypatch, toymod):
     import inspect
     assert "script" not in inspect.signature(box.ship_check).parameters
     seen = {}
     monkeypatch.setattr("se2modkit.cli.ship_cmd.run_ship",
                         lambda args, env, *, say=None: seen.setdefault("args", args) and {"code": 0, "queue": {}})
-    for mod, blocks in (("ToyMod", ["-x"]), ("ToyMod", ["XX_A", "--script=evil.py"]), ("--script=evil.py", ["XX_A"])):
+    for mod, blocks in (("ToyMod", ["-x"]), ("ToyMod", ["XX_A", "--script=evil.py"]),
+                        ("--script=evil.py", ["XX_A"])):
         res = box.ship_check(mod, blocks)
         assert res["ok"] is False and "-" in res["error"]
     assert "args" not in seen
@@ -340,7 +372,7 @@ def test_written_paths_must_be_in_the_cache_or_a_preview_folder(box, monkeypatch
     assert res["ok"] is False
     assert box.describe("toy.blend", json_out=str(tmp_path / "cache" / "d" / "toy.json"))["ok"]
     preview = toymod / "Source" / "Model" / "preview" / "describe" / "toy.json"
-    assert box.describe("toy.blend", mod=str(toymod), json_out=str(preview))["ok"]
+    assert box.describe("toy.blend", mod="ToyMod", json_out=str(preview))["ok"]
     assert box.describe("toy.blend", json_out=str(preview))["ok"] is False      # no mod: only the cache
     assert seen == [(tmp_path / "cache" / "d" / "toy.json").resolve(), preview.resolve()]
 
@@ -357,9 +389,9 @@ def test_look_out_block_and_finish_are_confined(box, monkeypatch, tmp_path, toym
     for block in ("../../x", "a/b", "-x", "..", ""):
         assert box.look("a.glb", block, out=str(tmp_path / "cache" / "look"))["ok"] is False, block
     assert called == []
-    assert box.look("a.glb", "XX_A", mod=str(toymod),
+    assert box.look("a.glb", "XX_A", mod="ToyMod",
                     out=str(toymod / "Source" / "Model" / "preview" / "look"))["ok"]
-    assert box.look("a.glb", "XX_A", mod=str(toymod))["ok"]          # the default folder needs no check
+    assert box.look("a.glb", "XX_A", mod="ToyMod")["ok"]          # the default folder needs no check
     elsewhere = tmp_path / "elsewhere" / "XX_A" / "r1"
     elsewhere.mkdir(parents=True)
     res = box.look_finish(str(elsewhere))

@@ -123,9 +123,31 @@ class Toolbox:
             self._indexes[path] = bc.Index(path)
         return self._indexes[path]
 
+    def _mod(self, mod: str | None) -> str | None:
+        """The folder of the mod `mod` names: a mod of the project here or a mod in a workspace mods folder, by name
+        only. A path is refused: a ship check runs the mod's build script, and the mod's preview folder is where the
+        tools may write, so a client must not be able to point either at a folder of its choosing."""
+        if mod is None:
+            return None
+        from ..cli import modarg
+        from ..project import ProjectError, load_project
+        self._plain_name(mod, "mod")
+        try:
+            project = load_project(Path.cwd())
+        except ProjectError:
+            project = None
+        if project is not None and mod in project.mods:
+            return str(Path(project.mods[mod].root).resolve())
+        for base in modarg.workspace_mods_dirs(self.env):
+            d = base / mod
+            if modarg.project_file(d) is not None:
+                return str(d.resolve())
+        raise ToolFailure(f"mod {mod!r} is not a mod of the project here or of a workspace mods folder; the tools "
+                          "take a mod name, not a path.")
+
     def _write_roots(self, mod: str | None) -> list[Path]:
-        """Where a tool may write: the modkit cache, and the preview folder of the mod named (the folders the
-        commands write to by default)."""
+        """Where a tool may write: the modkit cache, and the preview folder of `mod` (a folder `_mod` returned): the
+        folders the commands write to by default."""
         from ..cli import modarg
         roots = [Path(self.env.cache_dir).resolve()]
         cfg = modarg.resolve(self.env, mod, need="config").config if mod else None
@@ -162,6 +184,7 @@ class Toolbox:
              tris_budget: int | None = None, no_check: bool = False, full: bool = False,
              wait: bool = True) -> dict[str, Any]:
         self._plain_name(block, "block")
+        mod = self._mod(mod)
         if out:
             out = str(self._confined(out, mod, "out"))
         argv = ["look", f"--block={block}", f"--set={set_name}", f"--views={views}", f"--stage={stage}",
@@ -183,7 +206,7 @@ class Toolbox:
     def look_finish(self, set_dir: str, stage: Literal["look", "concept", "fix"] = "look",
                     interior: bool = False, mod: str | None = None) -> dict[str, Any]:
         from ..cli.look_cmd import finish_look
-        out = self._confined(set_dir, mod, "set_dir")
+        out = self._confined(set_dir, self._mod(mod), "set_dir")
         if not out.is_dir() or not out.name.startswith("r") or not out.name[1:].isdigit():
             raise ToolFailure(f"{set_dir} is not a look set folder (<look>/<block>/r<N>).")
         return _jsonable({"set_dir": str(out), **finish_look(out, block=out.parent.name, stage=stage,
@@ -211,6 +234,7 @@ class Toolbox:
     def describe(self, blend: str, mod: str | None = None, collection: list[str] | None = None,
                  targets: str | None = None, envelope: list[float] | None = None, json_out: str | None = None,
                  timeout: float = 900) -> dict[str, Any]:
+        mod = self._mod(mod)
         if json_out:
             json_out = str(self._confined(json_out, mod, "json_out"))
         argv = ["describe", f"--timeout={timeout:g}"] + [f"--collection={c}" for c in collection or ()]
@@ -229,8 +253,7 @@ class Toolbox:
                    blend: list[str] | None = None, timeout: float = 1800) -> dict[str, Any]:
         if not blocks:
             raise ToolFailure("name at least one block (or PREFIX*).")
-        if mod.startswith("-"):
-            raise ToolFailure(f"mod {mod!r} starts with '-'; give a mod name or folder.")
+        mod = self._mod(mod)
         for b in blocks:
             self._plain_name(b, "block")
         argv = ["ship", "check", f"--timeout={timeout:g}"] + [f"--blend={b}" for b in blend or ()]
@@ -239,6 +262,8 @@ class Toolbox:
         from ..cli.ship_cmd import run_ship
         log: list[str] = []
         res = run_ship(self.parse(argv), self.env, say=log.append)
+        for r in res.get("reports") or () if res.get("out_dir") else ():
+            r["ship_json"] = str(Path(res["out_dir"]) / r["block"] / "ship.json")
         return _jsonable({**res, "log": log})
 
     # -- queue ------------------------------------------------------------------------------------------------------

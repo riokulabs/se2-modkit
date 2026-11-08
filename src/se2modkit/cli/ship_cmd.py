@@ -145,7 +145,6 @@ def run_ship(args, env, *, say=None) -> dict:
         d = out_root / r["block"]
         d.mkdir(parents=True, exist_ok=True)
         (d / "ship.json").write_text(json.dumps(r, indent=1) + "\n", encoding="utf-8", newline="\n")
-        r["ship_json"] = str(d / "ship.json")
     return {**res, "code": 1 if failed else 0, "reports": reports}
 
 

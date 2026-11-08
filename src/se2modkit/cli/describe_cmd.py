@@ -71,7 +71,8 @@ def job_argv(env, blend: Path, spec: Path, status: Path) -> list[str]:
     require(env, "blender")
     expr = f"import sys; sys.path[:0] = {[str(package_root(env))]!r}"
     script = Path(D.__file__).with_name("describe_job.py")
-    return [str(env.blender), "-b", str(blend), "--python-exit-code", "1", "--python-expr", expr,
+    # --disable-autoexec: never run scripts saved in the file (drivers, registered text blocks)
+    return [str(env.blender), "-b", "--disable-autoexec", str(blend), "--python-exit-code", "1", "--python-expr", expr,
             "--python", str(script), "--", str(spec), str(status)]
 
 

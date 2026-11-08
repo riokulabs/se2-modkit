@@ -63,8 +63,8 @@ def test_queues_one_light_headless_job_on_the_file(blend, queued, capsys, tmp_pa
     assert cli.main(["describe", str(blend), "--collection", "Block", "--envelope", "1,1,1.5", "--json",
                      str(out)]) == 0
     argv = queued["argv"]
-    assert argv[1] == "-b" and argv[2] == str(blend.resolve()) and argv[argv.index("--python") + 1].endswith(
-        "describe_job.py")
+    assert argv[1:4] == ["-b", "--disable-autoexec", str(blend.resolve())]    # scripts in the file never run
+    assert argv[argv.index("--python") + 1].endswith("describe_job.py")
     assert queued["kw"]["load"] == Q.LOADS["light"] and queued["kw"]["name"] == "describe:toy.blend:Block"
     assert queued["spec"] == {"source": "toy.blend", "collections": ["Block"], "envelope": [1.0, 1.0, 1.5],
                               "targets": []}
