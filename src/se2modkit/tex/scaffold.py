@@ -12,15 +12,16 @@ packs and compresses the sources into DDS at build time.
     PNG (or at the same constant or default the vanilla one uses);
   - a minimal `.meta` beside every new file and folder, so the `.comptex` files can name the PNGs by GUID.
 
-What is taken from the vanilla material is its layout only: the preset GUIDs, the order of inputs and the version
-stamps of the file format. No vanilla image is read, copied or referenced.
+What is taken from the vanilla material is its layout only: the preset GUIDs, the order of inputs and its constants.
+New files are stamped with the newest tested game, whatever the vanilla files carry, because the current source types
+load only under a current stamp. No vanilla image is read, copied or referenced.
 """
 
 from __future__ import annotations
 
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..defs.envelope import envelope, write_json
@@ -52,15 +53,6 @@ class Packed:
     suffix: str
     preset: str                                    # preset GUID
     inputs: list[tuple[str, float, str, float]]    # (role, preset default, "texture" | "constant" | "none", constant)
-    bundles: dict = field(default_factory=dict)    # the vanilla .comptex's $Bundles (format version stamps)
-
-
-def _bundles(path: str | Path) -> dict:
-    try:
-        b = sdkmat._load(path).get("$Bundles")
-    except (OSError, ValueError):
-        return {}
-    return b if isinstance(b, dict) else {}
 
 
 def layout(ix: sdkmat.Index, like: str) -> list[Packed]:
@@ -91,7 +83,7 @@ def layout(ix: sdkmat.Index, like: str) -> list[Packed]:
             inputs.append((role, default, kind, const or 0.0))
         stem = Path(ct).stem
         suffix = stem[len(like) + 1:] if stem.startswith(like + "_") else SLOT_SUFFIX.get(slot, slot.lower())
-        out.append(Packed(slot, suffix or SLOT_SUFFIX.get(slot, slot.lower()), preset, inputs, _bundles(ct)))
+        out.append(Packed(slot, suffix or SLOT_SUFFIX.get(slot, slot.lower()), preset, inputs))
     if not out:
         raise SetError(f"The vanilla material {like!r} has no packed textures whose preset the Mod SDK provides.")
     return out

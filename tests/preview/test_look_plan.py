@@ -80,6 +80,9 @@ class _SdkMat:
     def path(self, role):
         return None   # no colour mask: drawn as is, no player paint
 
+    def value(self, role, default):
+        return default
+
 
 def test_a_slot_the_sdk_has_maps_for_is_drawn_from_them(monkeypatch, tmp_path):
     """A vanilla slot outside the stand-in tables (the hydrogen thruster cone) is drawn from its SDK maps, mapped or

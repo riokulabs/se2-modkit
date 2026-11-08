@@ -7,8 +7,10 @@ How the SDK describes a material (all JSON with a `$Type` / `$Value` envelope):
                       by asset GUID, written `{G}<guid>`; `EmissivityMultiplier` scales the emissive channel.
   <Name>_<x>.comptex  a packed texture (`CompositeTextureModel`): `PresetReference` names a packing preset and
                       `PresetModel.TextureSourceModels` lists one source per preset input, in the preset's order: a
-                      source PNG by GUID, or none (the preset's default), or `SourceSelection: "Constant"` with
-                      `ConstantValue`.
+                      source PNG by GUID, or none (the preset's default), or a constant. Current files type each
+                      source as `CompositeTexturePresetModel+SourceTexture` (`Texture`) or `+SourceConstantValue`
+                      (`ConstantValue`); files with old stamps use `CompositeTextureSourceModel` with
+                      `SourceSelection: "Texture"` or `"Constant"` and `ConstantValue`.
   <Preset>.texpreset  a packing preset (`TexturePackingPreset`, under GameData/Engine/Assets/Materials/Presets):
                       `SourceTextures` gives each input's role as `FileNameSuffixHint` (albedo, metal, alphamask,
                       normal, roughness, ao, emissive, colormask, ...) with its `DefaultValue`; `OutputChannels` packs
