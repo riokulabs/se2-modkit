@@ -12,6 +12,7 @@ import json
 import shutil
 import sys
 import time
+import traceback
 from pathlib import Path
 
 import bpy
@@ -147,6 +148,19 @@ def _shoot(shot, name, loc, tgt, lens, ortho, out):
     return cam, path
 
 
+def _diag(job, holder, objs, place, half, out, look_scene, look_cam, look_stem) -> dict:
+    """The measured views (`diag_run`); a failure there is reported, never fatal to the look set."""
+    from se2modkit.preview import diag_run
+    try:
+        png = out / f"{look_stem}.png"
+        info = diag_run.render(job, holder, objs, place, half, out, look_scene=look_scene, look_cam=look_cam,
+                               look_png=png if look_cam is not None and png.is_file() else None)
+        return {"json": "diag/diag.json", "seconds": info["seconds"]}
+    except Exception as e:   # noqa: BLE001  (the look shots are already written; keep them)
+        traceback.print_exc()
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 def run(job: dict) -> dict:
     t0 = time.monotonic()
     out = Path(job["out"])
@@ -213,6 +227,10 @@ def run(job: dict) -> dict:
             _shoot(sc.shot, name, tuple(pc + d * dist), tuple(pc), lens, None, out)
             close[name] = {"overview": f"{overview}.png", "rect": _pixel_rect(sc.shot.sc, cams["3q_front"], ppts)}
         (out / "close.json").write_text(json.dumps(close, indent=1) + "\n", encoding="utf-8")
+    diag = None
+    if job.get("diag", True):
+        diag = _diag(job, holder, objs, place, half, out, sc.shot.sc, cams.get("3q_front"),
+                     shots.shot_name(block, stage, rnd, "3q_front", "after" if job["before"].get("3q_front") else ""))
     if job.get("geocheck", True):
         from se2modkit.pipeline import geocheck as GC
         from se2modkit.preview.geocheck_blend import parts_from_objects
@@ -221,6 +239,8 @@ def run(job: dict) -> dict:
     report = {"source": job["source"], "set": job["set"], "views": job["views"], "seconds": 0.0,
               "unmapped_materials": unmapped, "close_missing": close_missing, "tris": _tris(objs),
               "half_extents": list(half)}
+    if diag is not None:
+        report["diag"] = diag
     report["seconds"] = round(time.monotonic() - t0, 1)
     (out / "report.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     print(f"LOOK {out} {report['seconds']} s")

@@ -204,3 +204,80 @@ def test_sheet_leaves_out_the_before_copies(tmp_path, monkeypatch):
     monkeypatch.setattr(compose, "make_sheet", lambda paths, *a, **kw: seen.extend(Path(p).name for p in paths))
     assert look.finish(out, block="XX_Drive", stage="fix", rnd=2)["problems"] == []
     assert seen == ["XX_Drive_fix_r2_front.png", "XX_Drive_fix_r2_top_after.png"]
+
+
+def test_job_carries_the_measured_view_settings(tmp_path):
+    job = _job(tmp_path)
+    assert job["diag"] is True and job["envelope"] is None and job["reference"] is None
+    ref = _png(tmp_path / "ref.png")
+    job = _job(tmp_path, envelope=(2.5, 2.5, 5), reference=ref, reference_view="side")
+    assert job["envelope"] == [2.5, 2.5, 5.0] and job["reference"] == str(ref.resolve())
+    assert job["reference_view"] == "side"
+    assert _job(tmp_path, diag=False)["diag"] is False
+
+
+def test_job_refuses_bad_measured_view_settings(tmp_path):
+    with pytest.raises(PreviewError, match="no such reference"):
+        _job(tmp_path, reference=tmp_path / "nope.png")
+    with pytest.raises(PreviewError, match="--no-diag"):
+        _job(tmp_path, reference=_png(tmp_path / "ref.png"), diag=False)
+    with pytest.raises(PreviewError, match="--envelope"):
+        _job(tmp_path, envelope=(2.5, 0, 1))
+    with pytest.raises(PreviewError, match="reference-view"):
+        _job(tmp_path, reference_view="top")
+
+
+def _diag_set(out):
+    from PIL import ImageDraw
+    d = out / "diag"
+    d.mkdir(parents=True)
+    for name in ("clay", "parts", "wire", "section_x", "ortho_front", "ortho_right", "ortho_top"):
+        im = Image.new("RGBA", (320, 180), (0, 0, 0, 0))
+        ImageDraw.Draw(im).rectangle((100, 40, 220, 160), fill=(140, 140, 140, 255))
+        im.save(d / f"{name}.png")
+    info = {"tile": [320, 180], "tiles": {"clay": "diag/clay.png", "parts": "diag/parts.png", "wire": "diag/wire.png"},
+            "sections": [{"png": "diag/section_x.png", "label": "cut"}],
+            "parts": [{"id": 1, "name": "Body", "color": [200, 40, 40], "xy": [160, 100]}], "distance": None,
+            "size_mm": [1000.0, 1000.0, 1000.0], "size_mm_source": [1000.0, 1000.0, 1000.0],
+            "envelope": {"from": "grid", "label": "fits 1 x 1 x 1 large-grid cells", "size_mm": [2500.0] * 3},
+            "ortho": {v: {"png": f"diag/ortho_{v}.png", "bbox": [100, 40, 220, 160], "envelope": [60, 10, 260, 170],
+                          "h_axis": 0, "v_axis": 2} for v in ("front", "right", "top")}}
+    (d / "diag.json").write_text(json.dumps(info))
+    report = {"diag": {"json": "diag/diag.json", "seconds": 1.5}}
+    (out / "report.json").write_text(json.dumps(report))
+
+
+def test_finish_draws_the_measured_views_and_records_them(tmp_path):
+    out = tmp_path / "r1"
+    _diag_set(out)
+    for v in look.views_for("look"):
+        _png(out / f"{shots.shot_name('XX', 'look', 1, v)}.png")
+    ref = tmp_path / "ref.png"
+    im = Image.new("RGB", (100, 100), (255, 255, 255))
+    from PIL import ImageDraw
+    ImageDraw.Draw(im).rectangle((20, 20, 80, 80), fill=(0, 0, 0))
+    im.save(ref)
+    report = look.finish(out, block="XX", stage="look", rnd=1, reference=ref, reference_view="side")
+    assert report["diag"]["sheet"] == "diag.png" and report["diag"]["ortho"] == "ortho.png"
+    assert "diag/clay.png" in report["diag"]["files"]
+    assert report["reference"]["diff"] == "refdiff.png" and report["reference"]["iou"] == pytest.approx(1.0, abs=0.02)
+    assert (out / "diag.png").is_file() and (out / "ortho.png").is_file() and (out / "refdiff.png").is_file()
+    # the measured views are no shots: the set's checks and contact sheet leave them alone
+    assert report["problems"] == []
+    saved = json.loads((out / "report.json").read_text())
+    assert saved["reference"]["view"] == "side"
+
+
+def test_a_failed_diagnostic_is_a_warning_not_a_problem(tmp_path):
+    out = tmp_path / "r1"
+    out.mkdir()
+    (out / "report.json").write_text(json.dumps({"diag": {"error": "RuntimeError: boom"}}))
+    for v in look.views_for("look"):
+        _png(out / f"{shots.shot_name('XX', 'look', 1, v)}.png")
+    report = look.finish(out, block="XX", stage="look", rnd=1)
+    assert report["problems"] == [] and report["warnings"] == ["diagnostic views: RuntimeError: boom"]
+    (out / "diag").mkdir()
+    (out / "diag" / "diag.json").write_text("{torn")
+    (out / "report.json").write_text(json.dumps({"diag": {"json": "diag/diag.json"}}))
+    report = look.finish(out, block="XX", stage="look", rnd=1)
+    assert report["problems"] == [] and report["warnings"][0].startswith("diagnostic views:")

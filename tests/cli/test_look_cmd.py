@@ -101,3 +101,29 @@ def test_a_budget_without_the_checks_warns(tmp_path, capsys):
     assert "--tris-budget is not checked with --no-check" in capsys.readouterr().err
     assert cli.main(argv + ["--tris-budget", "29000"]) == 0
     assert "--no-check" not in capsys.readouterr().err
+
+
+def test_measured_view_flags_reach_the_job(tmp_path):
+    src = tmp_path / "drive.glb"
+    src.write_bytes(b"glTF")
+    ref = tmp_path / "ref.png"
+    ref.write_bytes(b"png")
+    argv = ["look", str(src), "--block", "X", "--out", str(tmp_path / "look"), "--print-only"]
+    assert cli.main(argv) == 0
+    job = json.loads((tmp_path / "look" / "X" / "r1" / "job.json").read_text())
+    assert job["diag"] is True and job["envelope"] is None and job["reference"] is None
+    assert cli.main(argv + ["--envelope", "2.5,2.5,5", "--reference", str(ref), "--reference-view", "side"]) == 0
+    job = json.loads((tmp_path / "look" / "X" / "r2" / "job.json").read_text())
+    assert job["envelope"] == [2.5, 2.5, 5.0] and job["reference"] == str(ref) and job["reference_view"] == "side"
+    assert cli.main(argv + ["--no-diag"]) == 0
+    assert json.loads((tmp_path / "look" / "X" / "r3" / "job.json").read_text())["diag"] is False
+
+
+def test_a_reference_with_no_diag_is_one_plain_line(tmp_path, capsys):
+    src = tmp_path / "drive.glb"
+    src.write_bytes(b"glTF")
+    ref = tmp_path / "ref.png"
+    ref.write_bytes(b"png")
+    rc = cli.main(["look", str(src), "--block", "X", "--out", str(tmp_path / "look"), "--print-only", "--no-diag",
+                   "--reference", str(ref)])
+    assert rc == 1 and "drop --no-diag" in capsys.readouterr().err

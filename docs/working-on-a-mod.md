@@ -24,7 +24,8 @@ LOD, paint, lighting, resolution; format in `src/se2modkit/preview/plan.py`) fro
 without a window, into the mod's git-ignored `Source/Model/preview/<set>/`. `se2mod sheet` and `se2mod pair` lay
 images out side by side.
 
-`se2mod look SOURCE --block B [--set neighbors] [--views look|concept|v1,v2] [--before FOLDER] [--close PART]`
+`se2mod look SOURCE --block B [--set neighbors] [--views look|concept|v1,v2] [--before FOLDER] [--close PART]
+[--envelope X,Y,Z] [--reference IMG] [--no-diag]`
 renders a block's look set straight from its working file (`.blend`, `.glb`, `.gltf` or `.fbx`; read, never written)
 in the look-dev scene (`src/se2modkit/preview/lookdev.py`): mounted on a section of vanilla armor by `--mount-face`,
 beside the mod's `previews.toml` `[lookdev] neighbors` and a scale figure, from in-game eye views. It goes through the
@@ -38,6 +39,23 @@ and its report is still written). `--no-check` skips them for a quick warp test 
 not checked, and the command warns). Material names that are not Keen slots map
 through `[lookdev.materials]`; anything still unmapped renders magenta. No LODs, fracture or export: those come with
 `se2mod build-models` once the look is approved.
+
+Beside every look set go measured views (`src/se2modkit/preview/diag.py`), because a lit, textured picture is the
+hardest place to see a floating part, a clip or a wrong proportion. The same job renders them in a scene holding
+only the block, with Workbench and flat EEVEE materials (under a second for a small block). `diag.png` shows the
+block in clay with cavity shading, as a silhouette, with its triangle wireframe, colored per part with numbers (the
+legend numbers parts as `se2mod describe` does, by collection then name, so they match when the set names
+`--collection`), two section cuts through its center that contain its long axis (red is the inside of a closed part
+the cut passed through), and the 3/4 front shot shrunk to the pixels the block covers on a 1080p screen at 10, 25 and
+50 m, each with an enlarged copy. `ortho.png` is front, side and top orthographic views with the bounding size in mm
+and the block envelope: `--envelope X,Y,Z` (meters along the file's axes, centered on its origin, as `describe`
+takes it), else the smallest whole-grid-cell box around the model (named but not drawn when it is more than twice
+the block's size). `--reference IMG` (a front picture, or a side one with `--reference-view side`) compares
+silhouettes: the reference's shape (its alpha, else everything unlike its border color) is scaled to our height,
+centered and tried mirrored; `refdiff.png` shows red where only ours is and blue where only the reference is, and
+`report.json` gets the overlap (`reference.iou`). The raw tiles and `diag.json` are in the set's `diag/` folder and
+listed under `report.json` `diag`. A diagnostic that fails is a warning, never a reason the set is held back;
+`--no-diag` skips them.
 
 Keen slots draw from the Mod SDK's own source maps when the SDK is installed (`src/se2modkit/preview/sdkmat.py` reads
 each material's `.def`, its `.comptex` recipes and their packing presets): albedo with the player paint through the
