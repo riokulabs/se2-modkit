@@ -3,6 +3,7 @@ loopback request to the test's own server."""
 
 from __future__ import annotations
 
+import http.client
 import json
 import struct
 import threading
@@ -78,15 +79,74 @@ def test_not_a_glb(tmp_path):
         view.prepare(tmp_path / "o", tmp_path / "m.glb")
 
 
-def test_server_binds_loopback_and_serves_the_page(tmp_path):
-    view.prepare(tmp_path, maps=view.maps_in(_set(tmp_path)))
-    httpd = view.server(tmp_path, 0)
+def _get(port, path, host=None):
+    """(status, body) of a GET to the test's own loopback server, with an optional Host header."""
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     try:
-        assert httpd.server_address[0] == "127.0.0.1"
-        t = threading.Thread(target=httpd.serve_forever, daemon=True)
-        t.start()
-        with urllib.request.urlopen(f"http://127.0.0.1:{httpd.server_address[1]}/index.html", timeout=5) as r:
-            assert b"three@0.160.0" in r.read()
+        conn.putrequest("GET", path, skip_host=host is not None)
+        if host is not None:
+            conn.putheader("Host", host)
+        conn.endheaders()
+        r = conn.getresponse()
+        return r.status, r.read()
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def served(tmp_path):
+    out = tmp_path / "out"
+    view.prepare(out, glb(tmp_path / "m.glb"), view.maps_in(_set(tmp_path)))
+    (out / "secret.txt").write_text("not for the page")          # anything prepare() did not write
+    (out / "maps" / "extra.png").write_bytes(b"x")
+    httpd = view.server(out, 0)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        yield httpd.server_address[1]
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_server_binds_loopback_and_serves_the_page(tmp_path):
+    view.prepare(tmp_path / "out", maps=view.maps_in(_set(tmp_path)))
+    httpd = view.server(tmp_path / "out", 0)
+    try:
+        assert httpd.server_address[0] == "127.0.0.1"
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        port = httpd.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/index.html", timeout=5) as r:
+            assert b"three@0.160.0" in r.read()
+        assert _get(port, "/")[0] == 200
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_server_serves_only_the_generated_files(served):
+    for path in ("/index.html", "/model.glb", "/maps/albedo.png", "/maps/normal.png", "/maps/roughness.png"):
+        assert _get(served, path)[0] == 200, path
+    for path in ("/secret.txt", "/maps/extra.png", "/maps/", "/maps", "/../m.glb", "/%2e%2e/m.glb",
+                 "/maps/../secret.txt", "/maps/emissive.png", "//etc/passwd"):
+        status, body = _get(served, path)
+        assert status == 404 and b"not for the page" not in body, path
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1:{port}", "localhost:{port}"])
+def test_loopback_host_headers_are_served(served, host):
+    assert _get(served, "/index.html", host.format(port=served))[0] == 200
+
+
+@pytest.mark.parametrize("host", ["evil.example:{port}", "127.0.0.1", "localhost:1", "127.0.0.1:{port}.evil.example",
+                                  ""])
+def test_other_host_headers_are_refused(served, host):
+    status, body = _get(served, "/index.html", host.format(port=served))
+    assert status == 403 and b"three" not in body
+
+
+def test_out_must_be_new_or_empty(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    view.prepare(out, maps=view.maps_in(_set(tmp_path)))            # an empty folder is fine
+    with pytest.raises(view.ViewRefused, match="not empty"):
+        view.prepare(out, maps=view.maps_in(_set(tmp_path)))

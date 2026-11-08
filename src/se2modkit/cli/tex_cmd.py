@@ -36,7 +36,7 @@ def _add_args(p: argparse.ArgumentParser) -> None:
                                     "only) with adjustable light; refuses game textures")
     v.add_argument("target", help="a .glb model, or a texture set folder (<set>_<map>.png files)")
     v.add_argument("--set", dest="tex_set", metavar="DIR", help="texture set folder to put on the model's meshes")
-    v.add_argument("--out", metavar="DIR", help="folder to write the page into (default: a new temporary folder)")
+    v.add_argument("--out", metavar="DIR", help="new or empty folder to write the page into (default: a new temporary folder)")
     v.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (default: any free port)")
     v.add_argument("--no-serve", action="store_true", help="write the page and print its folder; serve nothing")
 

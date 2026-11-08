@@ -3,27 +3,28 @@ adjustable light. The page is written to a preview folder and served on 127.0.0.
 never something to publish.
 
   maps_in(folder)                          {role: PNG} of a texture set folder, by file name (`<set>_<role>.png`)
-  prepare(out, model=None, maps=None, *,   copy the model and maps into `out` and write `index.html`; refuses
-          vanilla_roots=(), forbidden=())  (ViewRefused) a file under a game folder or any copy of a game texture,
-                                           embedded GLB images included
-  serve(folder, port=0)                    serve the folder on 127.0.0.1 until interrupted
+  prepare(out, model=None, maps=None, *,   copy the model and maps into `out` (new or empty) and write `index.html`;
+          vanilla_roots=(), forbidden=())  refuses (ViewRefused) a file under a game folder or any copy of a game
+                                           texture, embedded GLB images included
+  serve(folder, port=0)                    serve those files, and only those, on 127.0.0.1 until interrupted; a
+                                           request whose Host is not 127.0.0.1:<port> or localhost:<port> gets 403
 
 three.js (MIT) is loaded from a pinned version on the jsDelivr CDN.
 """
 
 from __future__ import annotations
 
-import functools
 import json
 import shutil
 import struct
 import tempfile
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from ..validate import vanilla_textures
 
-__all__ = ["LOCAL_ONLY", "THREE_VERSION", "ViewRefused", "glb_images", "maps_in", "prepare", "serve"]
+__all__ = ["LOCAL_ONLY", "THREE_VERSION", "ViewRefused", "glb_images", "maps_in", "page_files", "prepare", "serve",
+           "server"]
 
 THREE_VERSION = "0.160.0"
 THREE_CDN = f"https://cdn.jsdelivr.net/npm/three@{THREE_VERSION}"
@@ -112,6 +113,8 @@ def prepare(out: Path, model: Path | None = None, maps: dict[str, Path] | None =
             raise ViewRefused(f"{f} does not exist.")
     _guard([Path(f) for f in files], glb_images(model) if model else [], vanilla_roots, forbidden)
     out = Path(out)
+    if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        raise ViewRefused(f"{out} exists and is not empty; give a new or empty folder for the page.")
     (out / "maps").mkdir(parents=True, exist_ok=True)
     cfg = {"model": None, "maps": {}}
     if model is not None:
@@ -126,14 +129,64 @@ def prepare(out: Path, model: Path | None = None, maps: dict[str, Path] | None =
     return page
 
 
-class _Quiet(SimpleHTTPRequestHandler):
+TYPES = {".html": "text/html; charset=utf-8", ".glb": "model/gltf-binary", ".png": "image/png"}
+
+
+def page_files(folder: Path) -> list[str]:
+    """The files `prepare` writes that exist in `folder`: index.html, model.glb and maps/<role>.png."""
+    names = ["index.html", "model.glb", *(f"maps/{r}.png" for r in ROLES)]
+    return [n for n in names if (Path(folder) / n).is_file()]
+
+
+class _Handler(BaseHTTPRequestHandler):
+    """Serves an allowlist of files (exact request paths; no directory listing, no path resolution) to requests whose
+    Host header names this loopback server, so a page on another site cannot reach it through DNS rebinding."""
+    folder: Path
+    files: frozenset[str]
+
     def log_message(self, *a):   # no request log on the terminal
         pass
 
+    def _host_ok(self) -> bool:
+        port = self.server.server_address[1]
+        host = (self.headers.get("Host") or "").strip().lower()
+        return host in (f"127.0.0.1:{port}", f"localhost:{port}")
 
-def server(folder: Path, port: int = 0) -> ThreadingHTTPServer:
-    """An HTTP server for `folder` bound to 127.0.0.1 (port 0 picks a free one); call serve_forever() on it."""
-    return ThreadingHTTPServer(("127.0.0.1", port), functools.partial(_Quiet, directory=str(folder)))
+    def _send(self, head_only: bool) -> None:
+        if not self._host_ok():
+            self.send_error(403, "Forbidden host")
+            return
+        path = self.path.split("?", 1)[0].split("#", 1)[0]
+        name = "index.html" if path == "/" else path[1:]
+        if not path.startswith("/") or name not in self.files:
+            self.send_error(404)
+            return
+        try:
+            body = (self.folder / name).read_bytes()
+        except OSError:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", TYPES.get(Path(name).suffix, "application/octet-stream"))
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(body)
+
+    def do_GET(self):
+        self._send(False)
+
+    def do_HEAD(self):
+        self._send(True)
+
+
+def server(folder: Path, port: int = 0, files=None) -> ThreadingHTTPServer:
+    """An HTTP server bound to 127.0.0.1 (port 0 picks a free one) for the viewer files in `folder` (default:
+    `page_files(folder)`) and nothing else; call serve_forever() on it."""
+    handler = type("Handler", (_Handler,), {"folder": Path(folder),
+                                            "files": frozenset(page_files(folder) if files is None else files)})
+    return ThreadingHTTPServer(("127.0.0.1", port), handler)
 
 
 def serve(folder: Path, port: int = 0, *, announce=print) -> None:

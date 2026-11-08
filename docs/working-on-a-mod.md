@@ -152,8 +152,10 @@ se2mod tex view MyMod/Assets/Textures/Hull                     # or a .glb, with
   (a warning), and every `.comptex` source and preset to resolve. With Pillow installed it also fails a normal map
   whose blue channel is mostly dark. Any image in the mod that is a byte-for-byte copy of a game texture fails, the
   same guard `se2mod build` and the publisher run.
-- `tex view` writes a three.js page (three.js 0.160.0 from jsDelivr) into a temporary folder, or `--out DIR`, and
-  serves it on 127.0.0.1 until Ctrl-C (`--no-serve` only writes it). It has sliders for the light, exposure,
+- `tex view` writes a three.js page (three.js 0.160.0 from jsDelivr) into a new temporary folder, or a new or empty
+  `--out DIR`, and serves it on 127.0.0.1 until Ctrl-C (`--no-serve` only writes it). The server sends only the page,
+  the model and the maps it wrote, with no folder listing, and answers only requests addressed to
+  `127.0.0.1:<port>` or `localhost:<port>`. It has sliders for the light, exposure,
   reflections, normal strength, glow and paint. It refuses files from the game or Mod SDK folders and any copy of a
   game texture, images embedded in a `.glb` included. It is for your own look-dev: never publish the page.
 
