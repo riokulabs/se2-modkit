@@ -79,8 +79,8 @@ model, report or build fragment. It prints each zone's health share (the number 
 where each seam landed (how far it snapped and how close the nearest vertex is) and the cell groups. It exits 1 on a
 plan, cut or collider that can't be made, too many cell groups, or, given `--max-key-share`, a critical zone over that
 share of the health; without it such a zone is a WARN line, since a heavy critical core can be the design. Loose
-vertices or edges in LOD0 are a WARN line too: the export drops them from every model it writes. Most of its time is the block's own build: seconds for a small block, minutes for a
-large drive, against tens of minutes for an export. It takes the export's first cut only and leaves out its LOD-count
+vertices or edges in LOD0 are a WARN line too: the export drops them from every model it writes. Most of its time
+is the block's own build: seconds for a small block, minutes for a large drive, against tens of minutes for an export. It takes the export's first cut only and leaves out its LOD-count
 and fractured triangle budget checks, so a block can still pass here and fail the export on those. `--check-fracture`
 on the build script does the same in Blender.
 

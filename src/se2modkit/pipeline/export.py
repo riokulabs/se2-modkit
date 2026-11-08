@@ -299,7 +299,8 @@ def _face_bounds(objs):
         pts += [mw @ vs[i].co for i in used]
     if not pts:
         return OB.bounds(objs)
-    return (tuple(min(p[k] for p in pts) for k in range(3)), tuple(max(p[k] for p in pts) for k in range(3)))
+    return (tuple(round(min(p[k] for p in pts), 4) for k in range(3)),      # rounded like OB.bounds
+            tuple(round(max(p[k] for p in pts), 4) for k in range(3)))
 
 
 def _size(objs):
