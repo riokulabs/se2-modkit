@@ -16,8 +16,12 @@ G_B = "30000000-0000-4000-8000-000000000002"
 
 
 @pytest.fixture
-def env(tmp_path):
-    return SimpleNamespace(cache_dir=tmp_path / "cache", platform="linux", blender=None, sdk_assets=None)
+def env(tmp_path, monkeypatch):
+    for name in ("SE2MODKIT_CONFIG", "SE2_WORKSPACE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    return SimpleNamespace(cache_dir=tmp_path / "cache", config_dir=tmp_path / "config", platform="linux",
+                           blender=None, sdk_assets=None)
 
 
 class Served:
@@ -74,9 +78,10 @@ def test_look_arguments_reach_the_look_command(box, monkeypatch, tmp_path):
     def run_look(args, env, *, say=None):
         seen["args"], seen["env"] = args, env
         say("queued job 3: x")
-        return {"code": 0, "warnings": [], "job_id": 3, "set_dir": tmp_path / "look" / "XX_A" / "r2"}
+        return {"code": 0, "warnings": [], "job_id": 3, "set_dir": tmp_path / "cache" / "look" / "XX_A" / "r2"}
     monkeypatch.setattr("se2modkit.cli.look_cmd.run_look", run_look)
-    res = box.look("drive.glb", "XX_A", out=str(tmp_path / "look"), mount_face="-Y", round=2, close=["Nozzle"],
+    res = box.look("drive.glb", "XX_A", out=str(tmp_path / "cache" / "look"), mount_face="-Y", round=2,
+                   close=["Nozzle"],
                    material={"rb_Bolt": "MetalDull"}, tris_budget=29000, interior=True, wait=False)
     a = seen["args"]
     assert seen["env"] is box.env
@@ -100,21 +105,21 @@ def test_look_print_only_path_is_real(box, tmp_path, monkeypatch):
                         lambda env, script, args, **kw: ["blender", "-b", "--python", str(script), "--", *args])
     src = tmp_path / "drive.glb"
     src.write_bytes(b"glTF")
-    res = box.look(str(src), "XX_Drive", out=str(tmp_path / "look"), wait=False)
+    res = box.look(str(src), "XX_Drive", out=str(tmp_path / "cache" / "look"), wait=False)
     assert res["ok"] and res["job_id"] == 11
     assert Path(res["set_dir"]).parts[-2:] == ("XX_Drive", "r1") and Path(res["job_file"]).is_file()
     assert "{gpu}" in submitted["argv"] and submitted["kw"]["load"] == Q.LOADS["medium"]
 
 
 def test_bad_look_arguments_come_back_as_an_error(box, tmp_path):
-    res = box.look(str(tmp_path / "x.glb"), "X", out=str(tmp_path / "look"), material={"rb_Bolt": ""})
+    res = box.look(str(tmp_path / "x.glb"), "X", out=str(tmp_path / "cache" / "look"), material={"rb_Bolt": ""})
     assert res["ok"] is False and "NAME=SLOT" in res["error"]
     res = box.look("x.glb", "X", stage="nope")
     assert res["ok"] is False and "bad arguments" in res["error"]
 
 
 def test_look_finish_and_geocheck_read_the_set(box, tmp_path, monkeypatch):
-    out = tmp_path / "look" / "XX_A" / "r3"
+    out = tmp_path / "cache" / "look" / "XX_A" / "r3"
     out.mkdir(parents=True)
     (out / "geocheck.json").write_text(json.dumps({"ok": False, "failures": [{"what": "floating"}], "warnings": []}))
     (out / "report.json").write_text(json.dumps({"problems": ["missing view top"]}))
@@ -131,7 +136,7 @@ def test_look_finish_and_geocheck_read_the_set(box, tmp_path, monkeypatch):
     g = box.geocheck(str(out))
     assert g["ok"] and g["passed"] is False and g["failures"] == [{"what": "floating"}]
     assert g["not_ready"] == ["missing view top"]
-    assert box.look_finish(str(tmp_path))["ok"] is False
+    assert box.look_finish(str(tmp_path / "cache"))["ok"] is False
     assert box.geocheck(str(tmp_path / "nothing"))["ok"] is False
 
 
@@ -286,3 +291,76 @@ def test_deps_check_returns_findings_and_keeps_stdout_clean(box, monkeypatch, ca
     assert res["findings"][0]["id"] == "x" and len(res["summary"]) == 2
     assert capsys.readouterr().out == ""
     assert not list((Path(box.env.cache_dir) / "deps").glob("mcp-report-*"))
+
+
+# -- what a client may write and run ---------------------------------------------------------------------------------
+
+@pytest.fixture
+def toymod(tmp_path):
+    root = tmp_path / "Toy Mod"
+    (root / "Source" / "Model").mkdir(parents=True)
+    (root / "ToyMod.vrgproj").write_text("{}", encoding="utf-8")
+    (root / "pyproject.toml").write_text('[tool.se2modkit]\nmod_name = "ToyMod"\nprefix = "XX_"\n', encoding="utf-8")
+    return root
+
+
+def test_ship_check_takes_no_script_and_refuses_option_like_names(box, monkeypatch):
+    import inspect
+    assert "script" not in inspect.signature(box.ship_check).parameters
+    seen = {}
+    monkeypatch.setattr("se2modkit.cli.ship_cmd.run_ship",
+                        lambda args, env, *, say=None: seen.setdefault("args", args) and {"code": 0, "queue": {}})
+    for mod, blocks in (("ToyMod", ["-x"]), ("ToyMod", ["XX_A", "--script=evil.py"]), ("--script=evil.py", ["XX_A"])):
+        res = box.ship_check(mod, blocks)
+        assert res["ok"] is False and "-" in res["error"]
+    assert "args" not in seen
+    box.ship_check("ToyMod", ["XX_A"])
+    assert seen["args"].script is None and seen["args"].blocks == ["XX_A"]
+
+
+def test_positional_file_arguments_follow_a_double_dash(box, monkeypatch):
+    seen = {}
+    monkeypatch.setattr("se2modkit.cli.describe_cmd.run_describe",
+                        lambda args, env, *, say=None: seen.setdefault("d", args) and {"code": 0})
+    monkeypatch.setattr("se2modkit.cli.look_cmd.run_look",
+                        lambda args, env, *, say=None: seen.setdefault("l", args) and {"code": 0, "warnings": []})
+    box.describe("-v.blend")
+    box.look("-v.glb", "XX_A")
+    assert seen["d"].blend == Path("-v.blend") and seen["l"].source == Path("-v.glb")
+
+
+def test_written_paths_must_be_in_the_cache_or_a_preview_folder(box, monkeypatch, tmp_path, toymod):
+    seen = []
+    monkeypatch.setattr("se2modkit.cli.describe_cmd.run_describe",
+                        lambda args, env, *, say=None: seen.append(args.json) or {"code": 0})
+    outside = tmp_path / "home" / ".bashrc"
+    res = box.describe("toy.blend", json_out=str(outside))
+    assert res["ok"] is False and "outside" in res["error"] and str(tmp_path / "cache") in res["error"]
+    res = box.describe("toy.blend", json_out="../../etc/x.json")
+    assert res["ok"] is False
+    assert box.describe("toy.blend", json_out=str(tmp_path / "cache" / "d" / "toy.json"))["ok"]
+    preview = toymod / "Source" / "Model" / "preview" / "describe" / "toy.json"
+    assert box.describe("toy.blend", mod=str(toymod), json_out=str(preview))["ok"]
+    assert box.describe("toy.blend", json_out=str(preview))["ok"] is False      # no mod: only the cache
+    assert seen == [(tmp_path / "cache" / "d" / "toy.json").resolve(), preview.resolve()]
+
+
+def test_look_out_block_and_finish_are_confined(box, monkeypatch, tmp_path, toymod):
+    called = []
+    monkeypatch.setattr("se2modkit.cli.look_cmd.run_look",
+                        lambda args, env, *, say=None: called.append(args) or {"code": 0, "warnings": []})
+    assert box.look("a.glb", "XX_A", out=str(tmp_path / "elsewhere"))["ok"] is False
+    link = tmp_path / "cache" / "escape"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+    assert box.look("a.glb", "XX_A", out=str(link))["ok"] is False
+    for block in ("../../x", "a/b", "-x", "..", ""):
+        assert box.look("a.glb", block, out=str(tmp_path / "cache" / "look"))["ok"] is False, block
+    assert called == []
+    assert box.look("a.glb", "XX_A", mod=str(toymod),
+                    out=str(toymod / "Source" / "Model" / "preview" / "look"))["ok"]
+    assert box.look("a.glb", "XX_A", mod=str(toymod))["ok"]          # the default folder needs no check
+    elsewhere = tmp_path / "elsewhere" / "XX_A" / "r1"
+    elsewhere.mkdir(parents=True)
+    res = box.look_finish(str(elsewhere))
+    assert res["ok"] is False and "outside" in res["error"]

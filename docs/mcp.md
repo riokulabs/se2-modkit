@@ -50,5 +50,10 @@ Each tool carries the MCP hints `readOnlyHint`, `destructiveHint` and `idempoten
 read-only ones without asking. Every result has `ok`; a tool that could not do its work returns `ok: false` with an
 `error` line, and the checks also return `code`, the matching command's exit code.
 
+A path a tool writes to (`look`'s `out`, `look_finish`'s `set_dir`, `describe`'s `json_out`) must lie in the
+modkit cache or in the preview folder of the mod the call names (`Source/Model/preview`), the folders the commands
+write to by default; anything else is refused. Block and mod names may not start with `-`, and `ship_check` always
+runs the mod's own build script. `queue_submit` runs any command and is marked destructive.
+
 Renders, describe and ship checks run as jobs on the shared GPU queue ([render-queue.md](render-queue.md)), never as a
 Blender the server starts itself. While serving, stdout carries only the protocol; anything else printed goes to stderr.
