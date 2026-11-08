@@ -12,8 +12,8 @@ and, when a limit is given, a critical zone
 holding more than `max_key_share` of the block's health. Without a limit that last one is a warning at MAX_KEY_SHARE:
 a critical zone counts twice, so a large one makes the block hard to break, but a heavy critical core can be the
 design; the bar belongs in the mod's kit, not here. Loose vertices or edges in LOD0 are a warning: the export drops
-them from every model it writes (`standins.merged`), so they never ship, but a source that carries many is worth a
-look.
+them (`standins.merged` for the whole-block and simple models, `export.keep_zone` for the planned fracture zones) and
+sizes the block from face vertices only, so they never ship, but a source that carries many is worth a look.
 """
 
 from __future__ import annotations

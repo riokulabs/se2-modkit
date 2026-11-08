@@ -26,3 +26,10 @@ def test_merged_drops_loose_edges_and_vertices():
     me = ob.data
     assert len(me.polygons) == 1 and len(me.vertices) == 4 and len(me.edges) == 4
     assert max(v.co.length for v in me.vertices) < 2      # the far loose pieces no longer stretch the bounds
+
+
+def test_block_size_ignores_loose_vertices():
+    from se2modkit.pipeline import export
+    coll = OB.new_collection("loose_size_test")
+    src = _quad_with_loose("loose_size_src", coll)
+    assert export._size([src]) == (1.0, 1.0, 0.0)          # the loose edge at (5..6, 5, 5) and vertex at 9 don't count
