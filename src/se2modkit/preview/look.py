@@ -1,4 +1,5 @@
-"""`se2mod look`: a fast look set of a block, rendered straight from the working file in the look-dev scene.
+"""`se2mod look`: a fast look set of a block, rendered straight from the working file in the look-dev scene, with
+measured views beside it (`preview.diag`).
 
 The plain-Python half: which views a set needs, the next free round, the job the Blender side (`look_run`) reads, the
 queue command, material names to Keen slots, the cameras a `--before` set used, and `finish`, which runs once the
@@ -99,8 +100,10 @@ def before_cameras(before_dir: Path, block: str, views: list[str]) -> dict[str, 
 def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, views: list[str], set_name: str,
               collection: str = "", mount_face: str = "-Z", grid: str = "large", neighbors=(), materials=None,
               armor_dir: Path | None = None, before: Path | None = None, close=(), fast: bool = True,
-              geocheck: bool = True, tris_budget: int | None = None) -> dict:
-    """The JSON `look_run` reads."""
+              geocheck: bool = True, tris_budget: int | None = None, diag: bool = True, envelope=None,
+              reference: Path | None = None, reference_view: str = "front") -> dict:
+    """The JSON `look_run` reads. `diag` adds the measured views (`preview.diag`); `envelope` is the block's size
+    in meters along the source's X, Y, Z; `reference` a front or side picture to compare silhouettes with."""
     source = Path(source)
     if not source.is_file():
         raise PreviewError(f"no such file: {source}")
@@ -113,6 +116,16 @@ def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, 
                            "needs the Mod SDK's source maps).")
     lookdev.set_spec(set_name)
     lookdev.mount_rotation(mount_face)
+    from . import diag as DG
+    if envelope is not None:
+        DG.envelope_box((1, 1, 1), envelope=envelope)          # three sizes over 0, or one plain sentence
+    if reference is not None:
+        if not diag:
+            raise PreviewError("--reference compares against the measured views; drop --no-diag.")
+        if not Path(reference).is_file():
+            raise PreviewError(f"no such reference picture: {reference}")
+    if reference_view not in DG.REFERENCE_VIEWS:
+        raise PreviewError(f"--reference-view is {' or '.join(DG.REFERENCE_VIEWS)}.")
     return {
         "source": str(source.resolve()), "kind": kind, "collection": collection, "block": block, "stage": stage,
         "round": rnd, "views": list(views), "set": set_name, "mount_face": mount_face, "grid": grid,
@@ -120,6 +133,9 @@ def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, 
         "armor_dir": str(armor_dir) if armor_dir else "", "out": str(Path(out_dir).resolve()),
         "before": before_cameras(before, block, list(views)) if before else {}, "close": list(close),
         "fast": fast, "load": LOAD, "priority": True, "geocheck": geocheck, "tris_budget": tris_budget,
+        "diag": diag, "envelope": [float(v) for v in envelope] if envelope is not None else None,
+        "reference": str(Path(reference).resolve()) if reference is not None else None,
+        "reference_view": reference_view,
     }
 
 
@@ -131,8 +147,11 @@ def queue_argv(job_file: Path, blender_argv: list[str], *, name: str, priority: 
     return argv + ["--", *blender_argv]
 
 
-def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = False) -> dict:
-    """After the render: locators on close-ups, the shot standard's checks, the contact sheet, `report.json`."""
+def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = False, reference: Path | None = None,
+           reference_view: str = "front") -> dict:
+    """After the render: locators on close-ups, the shot standard's checks, the contact sheet, the measured views
+    (`diag.png`, `ortho.png` and, with a `reference`, `refdiff.png`) and `report.json`. A diagnostic that could not
+    be drawn is a warning (`report["warnings"]`), never a reason the set is held back."""
     from .compose import make_sheet
     out = Path(out)
     close = out / "close.json"
@@ -162,5 +181,12 @@ def finish(out: Path, *, block: str, stage: str, rnd: int, interior: bool = Fals
                   if not ((n := shots.parse_shot_name(p.stem)) and n.extra == "before"))
     if pngs:
         make_sheet([str(p) for p in pngs], out / "sheet.png", cols=3, labels=True, thumb=480)
+    from . import diag as DG
+    try:
+        warnings = DG.finish(out, report, reference=reference, reference_view=reference_view)
+    except (PreviewError, OSError, ValueError, KeyError) as e:   # a torn diag.json or tile: say so, keep the set
+        warnings = [f"diagnostic views: {type(e).__name__}: {e}"]
+    if warnings:
+        report["warnings"] = warnings
     report_path.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     return report

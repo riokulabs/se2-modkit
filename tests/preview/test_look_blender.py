@@ -179,3 +179,57 @@ def test_a_geometry_check_error_still_writes_the_report(tmp_path, monkeypatch):
     assert (out / "report.json").is_file()
     geo = json.loads((out / "geocheck.json").read_text())
     assert geo["failures"][0]["check"] == "error" and "degenerate mesh" in geo["failures"][0]["detail"]
+
+
+def _pixels(path):
+    """(width, height, RGBA rows top to bottom) of a PNG, read with Blender's own image loader (no Pillow here)."""
+    import numpy as np
+    im = bpy.data.images.load(str(path))
+    w, h = im.size
+    px = np.array(im.pixels[:]).reshape(h, w, 4)[::-1]
+    bpy.data.images.remove(im)
+    return w, h, px
+
+
+def _alpha_box(path):
+    _w, _h, px = _pixels(path)
+    import numpy as np
+    ys, xs = np.nonzero(px[:, :, 3] > 0.5)
+    return [xs.min(), ys.min(), xs.max() + 1, ys.max() + 1]
+
+
+def test_measured_views_beside_the_set(tmp_path):
+    src = _source(tmp_path)
+    out = tmp_path / "look" / "XX_Drive" / "r1"
+    job = look.build_job(source=src, block="XX_Drive", out_dir=out, stage="look", rnd=1, views=["3q_front"],
+                         set_name="hull", mount_face="-Y", envelope=(2.5, 5.0, 2.5))
+    report = look_run.run(job)
+    assert "error" not in report["diag"], report["diag"]
+    info = json.loads((out / "diag" / "diag.json").read_text())
+    assert [p["name"] for p in info["parts"]] == ["Body", "Nozzle"] and info["parts"][0]["xy"]
+    # the body (2.5 m) and the nozzle past it along Y: the block stands on -Y, so that is its height
+    assert info["size_mm"][2] == pytest.approx(3050, abs=2) and info["size_mm_source"][1] == pytest.approx(3050, abs=2)
+    assert info["envelope"]["from"] == "--envelope" and info["envelope"]["size_mm"] == [2500.0, 2500.0, 5000.0]
+    for v in ("front", "right", "top"):
+        o = info["ortho"][v]
+        box = _alpha_box(out / o["png"])
+        # the drawn bounds are where the render has the block
+        for got, want in zip(box, o["bbox"]):
+            assert got == pytest.approx(want, abs=3), (v, box, o["bbox"])
+    assert info["ortho"]["front"]["v_axis"] == 2 and info["ortho"]["top"]["v_axis"] == 1
+    # a cut through a closed box shows its inside in red
+    _w, _h, sec = _pixels(out / info["sections"][0]["png"])
+    assert ((sec[:, :, 0] > 0.7) & (sec[:, :, 1] < 0.25) & (sec[:, :, 3] > 0.5)).any()
+    assert info["distance"]["shot"] == "XX_Drive_look_r1_3q_front.png"
+    x0, y0, x1, y1 = info["distance"]["rect"]
+    assert 0 <= x0 < x1 <= 1600 and 0 <= y0 < y1 <= 900
+    for name in ("clay", "parts", "wire"):
+        assert (out / info["tiles"][name]).is_file()
+
+
+def test_no_diag_leaves_the_set_as_it_was(tmp_path):
+    src = _source(tmp_path)
+    out = tmp_path / "look" / "XX_Drive" / "r1"
+    report = look_run.run(look.build_job(source=src, block="XX_Drive", out_dir=out, stage="look", rnd=1,
+                                         views=["front"], set_name="hull", diag=False))
+    assert "diag" not in report and not (out / "diag").exists()
