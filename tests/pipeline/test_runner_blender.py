@@ -157,7 +157,8 @@ def test_check_fracture_reports_shares_seams_and_loose_geometry(hooks, clean, tm
     assert seam["snap_mm"] == 50.0 and seam["clear_mm"] > 0
     assert rep["loose"] == {"pipe": {"verts": 1, "edges": 0}}
     out = capsys.readouterr().out
-    assert "FAIL" in out and "Fracture_01" in out and "pipe" in out
+    assert "Fracture_01" in out
+    assert any(ln.startswith("WARN") and "pipe" in ln and "drops" in ln for ln in out.splitlines())
     assert not (hooks.paths.models / "XX_Box").exists()          # nothing exported
     assert not hooks.paths.report.exists()                       # and no report written
 
