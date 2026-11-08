@@ -42,7 +42,8 @@ that hold several mods.
 | `diag` | no extra packages | `se2diag` ([diag.md](diag.md)) |
 | `preview` | Pillow | `se2mod preview`, `se2mod sheet`, `se2mod pair` |
 | `gui` | PySide6-Essentials | `se2mod queue gui` ([render-queue.md](render-queue.md)) |
-| `dev` | pytest, pytest-xdist, ruff, Pillow | working on modkit |
+| `mcp` | mcp (2.x) | `se2mod mcp`, the MCP server for agents ([mcp.md](mcp.md)) |
+| `dev` | pytest, pytest-xdist, ruff, Pillow, mcp | working on modkit |
 
 Console scripts: `se2mod`, `se2publish`, `se2diag`. Run `se2mod doctor` after installing.
 

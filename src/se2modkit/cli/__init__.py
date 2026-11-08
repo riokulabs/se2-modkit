@@ -52,6 +52,7 @@ def _load_commands() -> None:
         kit_cmd,
         lock_cmd,
         look_cmd,
+        mcp_cmd,
         models_cmd,
         mods_cmd,
         mount_cmd,

@@ -473,22 +473,29 @@ def comp_label(c):
     return s
 
 
-def cmd_show(args, idx):
+def show_hits(idx, target: str) -> tuple[Blocks, list[str]]:
+    """The binding GUIDs `chain show TARGET` covers: a binding's GUID, the bindings using a prefab, composite or block
+    definition GUID, or the bindings whose path contains TARGET. Raises DefsError when none does."""
     bl = Blocks(idx)
-    target = args.target.lower()
+    t = target.lower()
     hits = []
-    if target in idx.by_guid:
-        e = idx.by_guid[target]
+    if t in idx.by_guid:
+        e = idx.by_guid[t]
         if e.type == "PrefabBindingDefinition":
-            hits = [target]
+            hits = [t]
         else:   # a prefab/composite/blockdef: find the binding that uses it
             for g, _ in bl.bindings():
-                if target in json.dumps(bl.describe(g)):
+                if t in json.dumps(bl.describe(g)):
                     hits.append(g)
     else:
-        hits = [g for g, e in bl.bindings() if target in idx.rel(e.path).lower()]
+        hits = [g for g, e in bl.bindings() if t in idx.rel(e.path).lower()]
     if not hits:
-        raise DefsError(f"No block binding matches {args.target!r} under {idx.root}.")
+        raise DefsError(f"No block binding matches {target!r} under {idx.root}.")
+    return bl, hits
+
+
+def cmd_show(args, idx):
+    bl, hits = show_hits(idx, args.target)
     for g in hits[: args.limit]:
         i = bl.describe(g)
         print(f"== {i['binding_path']}   ({i.get('ui_name','')})   archetype: {i['archetype']}")

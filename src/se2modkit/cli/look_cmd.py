@@ -81,13 +81,18 @@ def _lookdev_config(env: SE2Env, mod: str | None):
                                                                           str(path))
 
 
-@register("look", "fast look set of a block from its working file, in the look-dev scene (queued)", add_args=_args,
-          check_game_version=False)
-def cmd_look(args: argparse.Namespace, env: SE2Env) -> int:
+def run_look(args: argparse.Namespace, env: SE2Env, *, say=None) -> dict:
+    """Write the look job, queue it, wait for it and check the set (as `se2mod look` does), returning what happened.
+
+    The result always has `code` (the command's exit code) and `warnings`; then `error`, or `queue_command`
+    (`--print-only`), or `job_id` and `set_dir`, and once waited for `sheet`, `report_path`, `report`, `not_ready`
+    and `geocheck` (the geometry checks' file, when they ran). `say` gets progress lines (default: stderr)."""
     from ..preview import PreviewError, look
     from ..preview import plan as PL
     from ..project import ProjectError
     from .blender_cmd import blender_argv, package_root
+    say = say or (lambda line: print(line, file=sys.stderr))
+    res: dict = {"code": 0, "warnings": []}
     try:
         default_out, ld = _lookdev_config(env, args.mod)
         out_root = args.out or default_out
@@ -111,48 +116,84 @@ def cmd_look(args: argparse.Namespace, env: SE2Env) -> int:
                              tris_budget=args.tris_budget, diag=not args.no_diag, envelope=args.envelope,
                              reference=args.reference, reference_view=args.reference_view)
     except (PreviewError, PL.PlanError, ProjectError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
+        return {**res, "code": 1, "error": str(e)}
     if args.no_check and args.tris_budget is not None:
-        print("warning: --tris-budget is not checked with --no-check (the geometry checks are skipped).",
-              file=sys.stderr)
+        res["warnings"].append("--tris-budget is not checked with --no-check (the geometry checks are skipped).")
     out = Path(job["out"])
     out.mkdir(parents=True, exist_ok=True)
     job_file = out / "job.json"      # beside its set, so two mods' jobs never share a name
     job_file.write_text(json.dumps(job, indent=1) + "\n", encoding="utf-8", newline="\n")
+    res.update(set_dir=str(out), job_file=str(job_file), round=rnd)
     script = Path(look.__file__).with_name("look_run.py")
     argv = blender_argv(env, script, [str(job_file)], mod_source=package_root(env), windowed=False)
-    argv[1:1] = ["--gpu-backend", "vulkan", "--gpu-device", "{gpu}"]
+    # never run scripts saved in the working file (drivers, registered text blocks)
+    argv[1:1] = ["--disable-autoexec", "--gpu-backend", "vulkan", "--gpu-device", "{gpu}"]
     name = f"look {args.block} {args.stage} r{rnd} ({args.set_name})"
     priority = _has_priority_lane()
     if args.print_only:
         qargv = look.queue_argv(job_file, argv, name=name, priority=priority, timeout=LOOK_TIMEOUT)
-        print("se2mod " + (subprocess.list2cmdline(qargv) if env.platform.startswith("win") else shlex.join(qargv)))
-        return 0
+        res["queue_command"] = "se2mod " + (subprocess.list2cmdline(qargv) if env.platform.startswith("win")
+                                            else shlex.join(qargv))
+        return res
     store = Q.Store(env.cache_dir / "queue")
     extra = {"priority": True} if priority else {}
     qjob = store.submit(argv, name=name, load=Q.LOADS[look.LOAD], timeout=LOOK_TIMEOUT, **extra)
     Q.ensure_runner(store)
-    print(f"queued job {qjob.id}: {out}")
+    res["job_id"] = qjob.id
+    say(f"queued job {qjob.id}: {out}")
     if args.no_wait:
-        return 0
+        return res
     code = Q.wait(store, qjob.id, LOOK_TIMEOUT + 120)
     if code:
-        print(f"error: the look job {qjob.id} failed (exit {code}); see `se2mod queue log {qjob.id}`.",
-              file=sys.stderr)
-        return 1
-    report = look.finish(out, block=args.block, stage=args.stage, rnd=rnd, interior=args.interior,
-                         reference=args.reference, reference_view=args.reference_view)
-    print(f"{out / 'sheet.png'}  ({report.get('seconds', '?')} s in Blender, {report.get('tris', '?')} triangles)")
+        return {**res, "code": 1, "error": f"the look job {qjob.id} failed (exit {code}); see "
+                                          f"`se2mod queue log {qjob.id}`."}
+    return {**res, **finish_look(out, block=args.block, stage=args.stage, rnd=rnd, interior=args.interior,
+                                 reference=args.reference, reference_view=args.reference_view)}
+
+
+def finish_look(out: Path, *, block: str, stage: str, rnd: int, interior: bool = False,
+                reference: Path | None = None, reference_view: str = "front") -> dict:
+    """Check a rendered set (contact sheet, measured views, `report.json`) and say where everything is; `code` 1
+    when it is not ready. `diag_sheet`, `ortho` and `refdiff` are None when that picture was not made."""
+    from ..preview import look
+    out = Path(out)
+    report = look.finish(out, block=block, stage=stage, rnd=rnd, interior=interior, reference=reference,
+                         reference_view=reference_view)
+    geo = out / "geocheck.json"
     diag = report.get("diag") or {}
-    for key in ("sheet", "ortho"):
-        if diag.get(key):
-            print(f"{out / diag[key]}" + (f"  ({diag['seconds']} s)" if key == "sheet" and "seconds" in diag else ""))
     ref = report.get("reference") or {}
-    if ref.get("diff"):
-        print(f"{out / ref['diff']}  (silhouette overlap with the reference: IoU {ref['iou']:.3f})")
-    for line in report.get("warnings", []):
-        print(f"  warning: {line}")
-    for line in report["problems"]:
-        print(f"  not ready: {line}")
-    return 1 if report["problems"] else 0
+    return {"code": 1 if report["problems"] else 0, "sheet": str(out / "sheet.png"),
+            "report_path": str(out / "report.json"), "report": report, "not_ready": list(report["problems"]),
+            "geocheck": str(geo) if geo.is_file() else None,
+            "diag_sheet": str(out / diag["sheet"]) if diag.get("sheet") else None,
+            "ortho": str(out / diag["ortho"]) if diag.get("ortho") else None,
+            "refdiff": str(out / ref["diff"]) if ref.get("diff") else None, "iou": ref.get("iou")}
+
+
+@register("look", "fast look set of a block from its working file, in the look-dev scene (queued)", add_args=_args,
+          check_game_version=False)
+def cmd_look(args: argparse.Namespace, env: SE2Env) -> int:
+    res = run_look(args, env, say=print)
+    for line in res["warnings"]:
+        print(f"warning: {line}", file=sys.stderr)
+    if "error" in res:
+        print(f"error: {res['error']}", file=sys.stderr)
+    elif "queue_command" in res:
+        print(res["queue_command"])
+    elif "report" in res:
+        report = res["report"]
+        out = Path(res["set_dir"])
+        print(f"{res['sheet']}  ({report.get('seconds', '?')} s in Blender, {report.get('tris', '?')} triangles)")
+        diag = report.get("diag") or {}
+        for key in ("sheet", "ortho"):
+            if diag.get(key):
+                print(f"{out / diag[key]}" + (f"  ({diag['seconds']} s)" if key == "sheet" and "seconds" in diag
+                                              else ""))
+        ref = report.get("reference") or {}
+        if ref.get("diff"):
+            print(f"{out / ref['diff']}  (silhouette overlap with the reference: IoU {ref['iou']:.3f})")
+        for line in report.get("warnings", []):
+            print(f"  warning: {line}")
+        for line in res["not_ready"]:
+            print(f"  not ready: {line}")
+    return res["code"]
