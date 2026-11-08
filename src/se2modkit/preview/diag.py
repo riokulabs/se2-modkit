@@ -34,6 +34,7 @@ __all__ = ["DISTANCES_M", "ORTHO_VIEWS", "REFERENCE_VIEWS", "SCREEN", "TILE", "a
 
 DISTANCES_M = (10, 25, 50)
 SCREEN = (1920, 1080)            # the gameplay-distance strip assumes a 1080p view
+STRIP_CAP = 440                  # a thumbnail taller than this (a big block up close) is drawn shrunk to it
 TILE = (800, 450)                # diagnostic tiles
 ORTHO = (1280, 720)              # measured views
 ORTHO_VIEWS = ("front", "right", "top")
@@ -217,6 +218,9 @@ def _distance_strip(folder, dist, font, zoom_h=220):
     cells = []
     for t in distance_thumbs(folder, dist):
         im = t["image"]
+        if im.height > STRIP_CAP:   # bigger than a thumbnail: it fills the view, so show it small and say so
+            t = {**t, "shown": STRIP_CAP / im.height}
+            im = im.resize((max(1, round(im.width * t["shown"])), STRIP_CAP), Image.LANCZOS)
         z = None
         if im.height < zoom_h:
             k = max(2, zoom_h // im.height)
@@ -230,6 +234,8 @@ def _distance_strip(folder, dist, font, zoom_h=220):
     for t, im, z in cells:
         strip.paste(im, (x, 24 + (h - 40 - im.height) // 2))
         note = f"{t['m']} m: {t['px'][0]:.0f} x {t['px'][1]:.0f} px" + (" (upscaled)" if t["upscaled"] else "")
+        if "shown" in t:
+            note += f", shown at {t['shown']:.0%}"
         if z:
             strip.paste(z, (x + im.width + 12, 24))
             note += f", right: x{z.width // im.width}"

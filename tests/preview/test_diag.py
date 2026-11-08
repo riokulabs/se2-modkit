@@ -154,6 +154,14 @@ def test_distance_thumbs_are_drawn_at_their_game_size(tmp_path):
     assert 30 <= thumbs[2]["image"].width <= 45
 
 
+def test_a_block_bigger_than_the_screen_is_drawn_capped_in_the_strip(tmp_path):
+    info = _info(tmp_path)
+    info["distance"]["targets"] = [{"m": 10, "px": [2000, 2200]}, {"m": 50, "px": [40, 44]}]
+    from PIL import ImageFont
+    strip = diag._distance_strip(tmp_path, info["distance"], diag._font(ImageFont, 14))
+    assert strip.height <= diag.STRIP_CAP + 40
+
+
 # --------------------------------------------------------------------------- reference
 
 

@@ -190,7 +190,7 @@ def render(job: dict, holder, objs, place, half, out: Path, *, look_scene=None, 
         _aim(cam, loc, tgt, frame, ortho=ortho, clip=span)
         _eevee(sc, cut)
         png = _render(sc, d / f"section_{c['normal']}.png")
-        sections.append({"png": str(png.relative_to(out)), "label": c["label"], "normal": c["normal"]})
+        sections.append({"png": png.relative_to(out).as_posix(), "label": c["label"], "normal": c["normal"]})
     # measured orthographic views, framed on the bounds and the envelope together
     env = DG.envelope_box(half, envelope=job.get("envelope"), mount_face=job["mount_face"],
                           origin=tuple(place.translation), grid=job["grid"])
@@ -211,7 +211,7 @@ def render(job: dict, holder, objs, place, half, out: Path, *, look_scene=None, 
         _aim(cam, loc, tgt, frame, ortho=scale)
         png = _render(sc, d / f"ortho_{v}.png")
         h, vv = _axes(sc, cam, fcenter, frame)
-        ortho[v] = {"png": str(png.relative_to(out)), "bbox": _rect(sc, cam, blo, bhi, frame),
+        ortho[v] = {"png": png.relative_to(out).as_posix(), "bbox": _rect(sc, cam, blo, bhi, frame),
                     "envelope": _rect(sc, cam, env["lo"], env["hi"], frame) if drawn else None, "h_axis": h, "v_axis": vv,
                     "px_per_m": round(ortho_res[0] / scale, 3)}
     distance = None
@@ -222,7 +222,7 @@ def render(job: dict, holder, objs, place, half, out: Path, *, look_scene=None, 
     size = [2000 * h for h in half]
     rot = lookdev.mount_rotation(job["mount_face"])
     src = [sum(abs(rot[i][j]) * size[i] for i in range(3)) for j in range(3)]   # back to the file's axes
-    info = {"tile": list(tile), "tiles": {k: str(Path(v).relative_to(out)) for k, v in tiles.items()},
+    info = {"tile": list(tile), "tiles": {k: Path(v).relative_to(out).as_posix() for k, v in tiles.items()},
             "sections": sections, "parts": parts, "distance": distance,
             "size_mm": [round(v, 1) for v in size], "size_mm_source": [round(v, 1) for v in src],
             "envelope": {**{k: env[k] for k in ("from", "label")}, "drawn": drawn, "size_mm": [round(v * 1000, 1) for v in env["size_m"]],
