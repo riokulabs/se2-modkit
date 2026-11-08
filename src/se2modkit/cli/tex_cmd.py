@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -123,7 +124,11 @@ def _view(args, env) -> int:
     print(f"page: {page}")
     if args.no_serve:
         return 0
-    view.serve(out, args.port)
+    try:
+        view.serve(out, args.port)
+    finally:
+        if not args.out:   # our own temporary page: nothing else is in it
+            shutil.rmtree(out, ignore_errors=True)
     return 0
 
 

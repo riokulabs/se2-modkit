@@ -14,6 +14,8 @@ three.js (MIT) is loaded from a pinned version on the jsDelivr CDN.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import shutil
 import struct
@@ -52,23 +54,30 @@ def glb_images(path: Path) -> list[bytes]:
     data = Path(path).read_bytes()
     if len(data) < 20 or data[:4] != b"glTF":
         raise ViewRefused(f"{path} is not a binary glTF (.glb) file.")
-    pos, doc, binary = 12, None, b""
-    while pos + 8 <= len(data):
-        n, kind = struct.unpack_from("<I4s", data, pos)
-        chunk = data[pos + 8:pos + 8 + n]
-        if kind == b"JSON":
-            doc = json.loads(chunk.decode("utf-8"))
-        elif kind == b"BIN\x00":
-            binary = chunk
-        pos += 8 + n
-    out = []
-    for img in (doc or {}).get("images") or []:
-        bv = img.get("bufferView")
-        if bv is None:
-            continue
-        v = doc["bufferViews"][bv]
-        start = v.get("byteOffset", 0)
-        out.append(binary[start:start + v["byteLength"]])
+    try:
+        pos, doc, binary = 12, None, b""
+        while pos + 8 <= len(data):
+            n, kind = struct.unpack_from("<I4s", data, pos)
+            chunk = data[pos + 8:pos + 8 + n]
+            if kind == b"JSON":
+                doc = json.loads(chunk.decode("utf-8"))
+            elif kind == b"BIN\x00":
+                binary = chunk
+            pos += 8 + n
+        out = []
+        for img in (doc or {}).get("images") or []:
+            uri = img.get("uri") or ""
+            if uri.startswith("data:") and ";base64," in uri:   # embedded in the JSON: check it like any other
+                out.append(base64.b64decode(uri.split(";base64,", 1)[1], validate=True))
+                continue
+            bv = img.get("bufferView")
+            if bv is None:
+                continue
+            v = doc["bufferViews"][bv]
+            start = v.get("byteOffset", 0)
+            out.append(binary[start:start + v["byteLength"]])
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError, struct.error, binascii.Error) as e:
+        raise ViewRefused(f"{path} is not a readable glTF file ({type(e).__name__}: {e}).") from e
     return out
 
 
@@ -270,18 +279,23 @@ for (const [role, url] of Object.entries(CONFIG.maps)) {
 }
 $("maps").textContent = "Maps: " + (Object.keys(tex).join(", ") || "none (the model's own)");
 
-const paint = { color: { value: new THREE.Color() }, on: { value: 1 }, mask: { value: tex.colormask || null } };
+const paint = { color: { value: new THREE.Color() }, on: { value: 1 } };
 function material(flipY) {
-  for (const t of Object.values(tex)) { if (t.flipY !== flipY) { t.flipY = flipY; t.needsUpdate = true; } }
+  // the sphere and cube use the maps as loaded (flipY); a glTF model needs unflipped copies of its own
+  const tx = {};
+  for (const [k, t] of Object.entries(tex)) {
+    if (flipY) { tx[k] = t; } else { const c = t.clone(); c.flipY = false; c.needsUpdate = true; tx[k] = c; }
+  }
+  const mask = { value: tx.colormask || null };
   const m = new THREE.MeshStandardMaterial({
-    color: 0xffffff, map: tex.albedo || null, normalMap: tex.normal || null,
-    roughness: 1, roughnessMap: tex.roughness || null, metalness: tex.metal ? 1 : 0, metalnessMap: tex.metal || null,
-    aoMap: tex.ao || null, emissive: tex.emissive ? 0xffffff : 0x000000, emissiveMap: tex.emissive || null,
+    color: 0xffffff, map: tx.albedo || null, normalMap: tx.normal || null,
+    roughness: 1, roughnessMap: tx.roughness || null, metalness: tx.metal ? 1 : 0, metalnessMap: tx.metal || null,
+    aoMap: tx.ao || null, emissive: tx.emissive ? 0xffffff : 0x000000, emissiveMap: tx.emissive || null,
   });
   if (!tex.roughness) m.roughness = 0.5;
   if (tex.colormask && tex.albedo) {
     m.onBeforeCompile = (s) => {
-      s.uniforms.paintColor = paint.color; s.uniforms.paintOn = paint.on; s.uniforms.colorMaskMap = paint.mask;
+      s.uniforms.paintColor = paint.color; s.uniforms.paintOn = paint.on; s.uniforms.colorMaskMap = mask;
       s.fragmentShader = "uniform vec3 paintColor; uniform float paintOn; uniform sampler2D colorMaskMap;\n" +
         s.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
         float cmask = texture2D(colorMaskMap, vMapUv).r * paintOn;

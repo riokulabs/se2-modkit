@@ -84,3 +84,12 @@ def test_view_rejects_other_files(run, tmp_path):
     (tmp_path / "x.fbx").write_bytes(b"")
     code, _out, err = run("tex", "view", str(tmp_path / "x.fbx"))
     assert code == 1 and "neither a .glb" in err
+
+
+def test_view_removes_its_own_temporary_page_after_serving(run, mod, with_sdk, tmp_path, monkeypatch):
+    run("tex", "new", "Hull", "--like", "Painted", "--mod", str(mod), "--size", "16")
+    seen = {}
+    monkeypatch.setattr(view, "serve", lambda folder, port, **k: seen.update(folder=folder))
+    code, _out, err = run("tex", "view", str(mod / "Assets" / "Textures" / "Hull"))
+    assert code == 0, err
+    assert seen["folder"].name.startswith("se2tex-view-") and not seen["folder"].exists()

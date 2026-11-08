@@ -150,3 +150,32 @@ def test_out_must_be_new_or_empty(tmp_path):
     view.prepare(out, maps=view.maps_in(_set(tmp_path)))            # an empty folder is fine
     with pytest.raises(view.ViewRefused, match="not empty"):
         view.prepare(out, maps=view.maps_in(_set(tmp_path)))
+
+
+@pytest.mark.parametrize("raw", [b"glTF" + b"\x00" * 8 + struct.pack("<I4s", 4, b"JSON") + b"{bad",
+                                 b"glTF" + b"\x00" * 8 + struct.pack("<I4s", 2, b"JSON") + b"\xff\xfe",
+                                 b"glTF" + b"\x00" * 8 + struct.pack("<I4s", 28, b"JSON") +
+                                 b'{"images":[{"bufferView":0}]}'])
+def test_a_malformed_glb_is_refused_in_a_sentence(tmp_path, raw):
+    p = tmp_path / "m.glb"
+    p.write_bytes(raw)
+    with pytest.raises(view.ViewRefused):
+        view.glb_images(p)
+
+
+def test_images_embedded_as_data_uris_are_checked_too(tmp_path):
+    import base64
+    data = b"\x89PNG fake image"
+    doc = {"asset": {"version": "2.0"},
+           "images": [{"uri": "data:image/png;base64," + base64.b64encode(data).decode()}]}
+    js = json.dumps(doc).encode()
+    js += b" " * (-len(js) % 4)
+    body = struct.pack("<I4s", len(js), b"JSON") + js
+    p = tmp_path / "m.glb"
+    p.write_bytes(b"glTF" + struct.pack("<II", 2, 12 + len(body)) + body)
+    assert view.glb_images(p) == [data]
+
+
+def test_the_model_gets_its_own_unflipped_textures():
+    js = view.PAGE
+    assert "t.clone()" in js and "t.flipY !== flipY" not in js
