@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import sys
 import time
 from pathlib import Path
 
 from .. import jobqueue as Q
+from .. import lease
 from ..env.config import load_user_config
 from . import register
 
@@ -74,6 +76,15 @@ def _add_args(p: argparse.ArgumentParser) -> None:
                         "it still never starts beside a running heavy job")
     s.add_argument("--env", type=_kv, action="append", default=[], metavar="K=V",
                    help="extra environment variable for the job (repeatable)")
+    s.add_argument("--owner", default=None, metavar="NAME",
+                   help="the session submitting the job, shown by status; only it may cancel the job without --force "
+                        "(default: $SE2_SESSION, else none, and anyone may cancel it)")
+    s.add_argument("--writes", type=Path, action="append", default=[], metavar="PATH",
+                   help="a file the job writes (repeatable). Refused while someone else holds a lease on it (se2mod "
+                        "lock); a lease taken after the submit makes the job wait until it is released. "
+                        f"{lease.LIVE_BLENDER} names the live Blender")
+    s.add_argument("--reads", type=Path, action="append", default=[], metavar="PATH",
+                   help="a file the job reads (repeatable): a warning if someone else holds a lease on it")
     s.add_argument("script_args", nargs="*", metavar="CMD", help="the command and its arguments, after --")
 
     w = sub.add_parser("wait", help="wait for a job; exits with its exit code (124 timeout, 125 cancelled)")
@@ -92,7 +103,10 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     c = sub.add_parser("cancel", help="cancel jobs: SIGTERM to the job's process group, SIGKILL 10 s later "
                                       "(two minutes for a live Blender)")
     c.add_argument("jobs", type=_job_id, nargs="*", metavar="ID")
-    c.add_argument("--all", action="store_true", help="cancel every queued and running job")
+    c.add_argument("--all", action="store_true",
+                   help="cancel every queued and running job of yours, and those with no owner")
+    c.add_argument("--owner", default=None, metavar="NAME", help="who is cancelling (default: $SE2_SESSION, else none)")
+    c.add_argument("--force", action="store_true", help="also cancel jobs another session submitted")
 
     sub.add_parser("clear", help="delete finished jobs and their logs (those that ended in the last "
                                  f"{Q.CLEAR_GRACE:g} s stay)")
@@ -120,6 +134,11 @@ def _add_args(p: argparse.ArgumentParser) -> None:
                    help="exit after S seconds with nothing to do (default: config queue.idle_exit, else 600)")
 
 
+def _session(args) -> str:
+    """The session acting: --owner, else $SE2_SESSION, else "" (unknown)."""
+    return args.owner if args.owner is not None else os.environ.get("SE2_SESSION", "")
+
+
 def _settings(env) -> Q.Settings:
     return Q.Settings.from_config(load_user_config(env.config_dir / "config.toml"))
 
@@ -143,8 +162,21 @@ def _dispatch(args, env, store: Q.Store) -> int:
         if argv[:1] == ["--"]:
             argv = argv[1:]
         _settings(env)   # a broken [queue] table is reported now, not later in the runner log
+        owner = _session(args)
+        holder = lease.holder_name(owner)
+        try:
+            for path in args.writes:
+                if (held := lease.held_by_other(env.cache_dir, path, owner=holder)) is not None:
+                    raise Q.QueueError(f"{held.path} is held by {held.owner} (se2mod lock list); ask them, wait for "
+                                       "the lease to end, or submit without --writes.")
+            for path in args.reads:
+                if (held := lease.held_by_other(env.cache_dir, path, owner=holder)) is not None:
+                    print(f"warning: {held.path} is leased to {held.owner}, who may be changing it", file=sys.stderr)
+        except lease.LeaseBusy as e:
+            raise Q.QueueError(str(e)) from None
         job = store.submit(argv, name=args.name, load=args.load, gpu=args.gpu, cwd=args.cwd, timeout=args.timeout,
-                           env=dict(args.env), priority=args.priority)
+                           env=dict(args.env), priority=args.priority, owner=owner, reads=args.reads,
+                           writes=args.writes, lease_dir=env.cache_dir)
         print(job.id)
         Q.ensure_runner(store)
         return 0
@@ -176,13 +208,16 @@ def _dispatch(args, env, store: Q.Store) -> int:
     if what == "cancel":
         if not args.all and not args.jobs:
             raise Q.QueueError("Name a job id, or use --all.")
-        changed = store.cancel(None if args.all else args.jobs)
+        changed, refused = store.cancel_as(None if args.all else args.jobs, by=_session(args), force=args.force)
         for job in changed:
             print(f"cancelled job {job.id} {job.name}" if job.final else
                   f"stopping job {job.id} {job.name} (SIGTERM, then SIGKILL after {Q.kill_grace(job):g}s)")
-        if not changed:
+        for job in refused:
+            print(f"{'skipped' if args.all else 'not cancelled'}: job {job.id} {job.name} belongs to {job.owner}; "
+                  "ask them, or use --force", file=sys.stderr)
+        if not changed and not refused:
             print("nothing to cancel")
-        return 0
+        return 1 if refused and not args.all else 0
     if what == "clear":
         print(f"cleared {store.clear_finished()} finished jobs")
         return 0

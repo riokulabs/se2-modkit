@@ -107,3 +107,27 @@ def test_take_rejects_a_ttl_that_is_not_positive(tmp_path, ttl):
 def test_parse_ttl_rejects_zero(text):
     with pytest.raises(ValueError, match="more than zero"):
         L.parse_ttl(text)
+
+
+def test_live_blender_is_a_named_resource_not_a_file(tmp_path, monkeypatch):
+    """`live-blender` names the live, windowed Blender wherever it is taken from, not a file in the current folder."""
+    cache = tmp_path / "cache"
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    monkeypatch.chdir(tmp_path / "a")
+    got = L.take(cache, L.LIVE_BLENDER, owner="A", ttl=60, now=T0)
+    assert got.path == "live-blender"
+    monkeypatch.chdir(tmp_path / "b")
+    with pytest.raises(L.LeaseHeld):
+        L.take(cache, "live-blender", owner="B", ttl=60, now=T0 + 1)
+    assert L.target("live-blender") == "live-blender"
+    assert L.target(tmp_path / "x.blend") == str((tmp_path / "x.blend").resolve())
+
+
+def test_held_by_other_names_a_live_lease_of_someone_else(tmp_path):
+    cache, blend = tmp_path / "cache", tmp_path / "drive.blend"
+    assert L.held_by_other(cache, blend, owner="B", now=T0) is None
+    L.take(cache, blend, owner="A", ttl=60, now=T0)
+    assert L.held_by_other(cache, blend, owner="A", now=T0 + 1) is None
+    assert L.held_by_other(cache, blend, owner="B", now=T0 + 1).owner == "A"
+    assert L.held_by_other(cache, blend, owner="B", now=T0 + 120) is None        # expired

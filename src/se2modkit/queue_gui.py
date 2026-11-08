@@ -43,7 +43,7 @@ def job_row(store: Q.Store, job: Q.JobRecord, place: int | None, now: float,
     """The table cells of one job. `place` is its place in the queue (1 = next to start) for a waiting job; `usage`
     is a running job's measured CPU, GPU and VRAM (JobSampler)."""
     if job.state == "queued":
-        state = "cancelling" if job.cancel else f"waiting #{place}"
+        state = "cancelling" if job.cancel else f"waiting #{place}" + (f" ({job.blocked})" if job.blocked else "")
         dev = "-"
     else:
         state = job.state + (" (stopping)" if job.cancel and not job.final else "")

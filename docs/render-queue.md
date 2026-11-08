@@ -17,9 +17,9 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 |---|---|
 | `se2mod queue submit [options] -- CMD ARGS...` | Queue a command, print its job ID, start the runner if it is not running |
 | `se2mod queue wait ID [--timeout S]` | Block until the job ends; exit with its exit code (124 on timeout, 125 if cancelled). Default timeout 3600 s |
-| `se2mod queue status` (or `list`) | One line per job: ID, name, load, state, GPU, elapsed time, exit code; a running job also shows its last log line. `--all` shows every kept job |
+| `se2mod queue status` (or `list`) | One line per job: ID, name, owner, load, state, GPU, elapsed time, exit code; a running job also shows its last log line, and a job held back by a lease says why. `--all` shows every kept job |
 | `se2mod queue log ID [-f]` | Print a job's output; `-f` keeps printing until the job ends |
-| `se2mod queue cancel ID... \| --all` | Cancel jobs: a queued job is dropped, a running one gets SIGTERM on its process group and SIGKILL 10 s later (two minutes for a live Blender) |
+| `se2mod queue cancel ID... \| --all [--owner NAME] [--force]` | Cancel jobs: a queued job is dropped, a running one gets SIGTERM on its process group and SIGKILL 10 s later (two minutes for a live Blender). A job another session submitted is refused (exit 1, naming its owner) unless `--force`; `--all` skips those. Jobs with no owner are anyone's to cancel |
 | `se2mod queue clear` | Delete finished jobs and their logs; jobs that ended in the last 10 s stay, so a tool waiting on one still sees it |
 | `se2mod queue pause` / `resume` | Pause the queue (running jobs carry on, nothing new starts) or resume it |
 | `se2mod queue move ID --top \| --bottom \| --up \| --down \| --to N` | Move a waiting job within the queue (`--to 1` is next to start) |
@@ -38,6 +38,9 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 | `--timeout SECONDS` | Stop the job after this long; `wait` then exits 124 |
 | `--priority` | The priority lane: start before plain waiting jobs, never beside a running heavy one |
 | `--env K=V` | Extra environment variable for the job (repeatable) |
+| `--owner NAME` | The session submitting the job (default: `$SE2_SESSION`, else none). Shown by `status`; only that session may cancel the job without `--force` |
+| `--writes PATH` | A file the job writes (repeatable). Refused when someone else holds a lease on it; a lease taken after the submit keeps the job waiting until it is released |
+| `--reads PATH` | A file the job reads (repeatable): a warning on stderr when someone else holds a lease on it |
 
 Everything after the first `--` is the command, taken verbatim (a `--` of its own, as in
 `blender -b --python build.py -- all`, stays part of it). In the command, `{gpu}` is replaced with the chosen Vulkan device index, which is also exported as
@@ -193,3 +196,10 @@ for 4 hours (`--ttl 30m`, `--owner NAME`; the owner defaults to `$SE2_SESSION`, 
 someone else holds exits 1 and names them. `se2mod lock release <file>` drops your lease, and `se2mod lock list`
 shows every lease still in force. Leases are advisory: they don't block a save, so take one before you edit and
 release it when you're done.
+
+`se2mod lock take live-blender` leases the live, windowed Blender (`se2mod queue blender`) rather than a file: every
+session reaches that Blender through the same MCP port, so take it before you drive it and release it when you're done.
+The name always means the live Blender, never a file called `live-blender`.
+
+Queued jobs check leases too: `submit --writes PATH` refuses a file someone else holds, and a job whose file is leased
+after it was submitted waits (`status` shows `waiting: PATH is leased to NAME`) instead of starting over their work.

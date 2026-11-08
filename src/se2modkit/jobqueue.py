@@ -140,6 +140,11 @@ class JobRecord:
     rank: float | None = None            # place in the queue once a job was moved (else its id)
     priority: bool = False               # the priority lane: starts before plain jobs (never beside a running heavy)
     kind: str = ""                       # "blender": a live, windowed Blender session (see blender_session_argv)
+    owner: str = ""                      # the session that submitted it ("" unknown: anyone may cancel it)
+    reads: list[str] = field(default_factory=list)    # files the job reads (resolved, or a lease name)
+    writes: list[str] = field(default_factory=list)   # files it writes: it waits while one is leased to someone else
+    lease_dir: str = ""                  # the cache folder whose leases `writes` is checked against
+    blocked: str = ""                    # why a waiting job can't start yet (a lease), shown by status
 
     @property
     def final(self) -> bool:
@@ -157,6 +162,23 @@ class JobRecord:
         if self.started is None:
             return None
         return (self.ended if self.ended is not None else now) - self.started
+
+
+def _lease_target(path: Path | str) -> str:
+    from . import lease   # lease builds on this module's FileLock
+    return lease.target(path)
+
+
+def lease_wait(job: JobRecord, now: float | None = None) -> str:
+    """Why `job` can't start yet: the first file it writes that someone else holds a lease on (else "")."""
+    if not job.writes or not job.lease_dir:
+        return ""
+    from . import lease
+    for path in job.writes:
+        held = lease.held_by_other(Path(job.lease_dir), path, owner=job.owner or lease.holder_name(None), now=now)
+        if held is not None:
+            return f"{held.path} is leased to {held.owner}"
+    return ""
 
 
 def blender_session_argv(blender: Path | str, blend_file: Path | str | None = None) -> list[str]:
@@ -310,14 +332,18 @@ class Store:
 
     def submit(self, argv: list[str], *, name: str = "", load: float = HEAVY, gpu: str | int = "auto",
                cwd: Path | str | None = None, timeout: float | None = None, env: Mapping[str, str] | None = None,
-               environ: Mapping[str, str] = os.environ, kind: str = "", priority: bool = False) -> JobRecord:
+               environ: Mapping[str, str] = os.environ, kind: str = "", priority: bool = False, owner: str = "",
+               reads: list[str] = (), writes: list[str] = (), lease_dir: Path | str | None = None) -> JobRecord:
         """Add a job; returns it with its new id. `environ` is the submitter's environment (see CAPTURED_ENV);
-        `priority` puts it in the priority lane."""
+        `priority` puts it in the priority lane. `owner` names the submitting session; `writes` lists files the job
+        must not start writing while someone else holds a lease on them in `lease_dir` (see the lease module)."""
         with self.lock():
             return self._new_job(argv, name=name, load=load, gpu=gpu, cwd=cwd, timeout=timeout, env=env,
-                                 environ=environ, kind=kind, priority=priority)
+                                 environ=environ, kind=kind, priority=priority, owner=owner, reads=reads,
+                                 writes=writes, lease_dir=lease_dir)
 
-    def _new_job(self, argv, *, name, load, gpu, cwd, timeout, env, environ, kind, priority, rank=None) -> JobRecord:
+    def _new_job(self, argv, *, name, load, gpu, cwd, timeout, env, environ, kind, priority, rank=None, owner="",
+                 reads=(), writes=(), lease_dir=None) -> JobRecord:
         """Create and save a job; the caller holds the queue lock."""
         if not argv:
             raise QueueError("Nothing to run: put the command after --.")
@@ -332,17 +358,29 @@ class Store:
         counter.write_text(f"{job_id + 1}\n", encoding="utf-8", newline="\n")
         job = JobRecord(id=job_id, argv=list(argv), name=name or Path(argv[0]).name, load=load, gpu_req=gpu,
                         cwd=str(Path(cwd if cwd is not None else os.getcwd()).resolve()), timeout=timeout,
-                        env=job_env, submitted=time.time(), kind=kind, priority=priority, rank=rank)
+                        env=job_env, submitted=time.time(), kind=kind, priority=priority, rank=rank, owner=owner,
+                        reads=[_lease_target(p) for p in reads], writes=[_lease_target(p) for p in writes],
+                        lease_dir=str(lease_dir) if lease_dir is not None else "")
         self.save(job)
         return job
 
     def cancel(self, job_ids: list[int] | None) -> list[JobRecord]:
-        """Cancel queued jobs now and flag running ones for the runner; None cancels every unfinished job."""
-        changed = []
+        """Cancel queued jobs now and flag running ones for the runner; None cancels every unfinished job. Whoever
+        submitted them (see cancel_as for a check)."""
+        return self.cancel_as(job_ids, by=None)[0]
+
+    def cancel_as(self, job_ids: list[int] | None, *, by: str | None,
+                  force: bool = False) -> tuple[list[JobRecord], list[JobRecord]]:
+        """Cancel as session `by`: a job with an owner other than `by` is left alone and returned in the second list,
+        unless `force`. A job with no owner is anyone's to cancel; `by=None` checks nothing."""
+        changed, refused = [], []
         with self.lock():
             jobs = self.all() if job_ids is None else [j for i in job_ids if (j := self.load(i)) is not None]
             for job in jobs:
                 if job.final:
+                    continue
+                if by is not None and not force and job.owner and job.owner != by:
+                    refused.append(job)
                     continue
                 if job.state == "queued":
                     job.state, job.ended, job.cancel = "cancelled", time.time(), True
@@ -350,7 +388,7 @@ class Store:
                     job.cancel = True
                 self.save(job)
                 changed.append(job)
-        return changed
+        return changed, refused
 
     def live_blender(self) -> JobRecord | None:
         """The live Blender session that is waiting or running, if any (there is at most one: they share a port)."""
@@ -711,7 +749,17 @@ class Runner:
             jobs = self.store.all()
             waiting = sorted((j for j in jobs if j.state == "queued" and not j.cancel), key=queue_key)
             running = [j for j in jobs if j.state == "running"]
-            for job, device in plan(waiting, running, outside=outside, gpus=gpus, settings=self.settings):
+            ready = []
+            for job in waiting:      # a job that writes a file someone else holds keeps waiting, out of the way
+                why = lease_wait(job, now)
+                if why != job.blocked:
+                    job.blocked = why
+                    self.store.save(job)
+                    if why:
+                        self.log(f"  ... job {job.id} {job.name} waits: {why}")
+                if not why:
+                    ready.append(job)
+            for job, device in plan(ready, running, outside=outside, gpus=gpus, settings=self.settings):
                 self._start(job, device)
         return True
 
@@ -799,15 +847,21 @@ def format_elapsed(seconds: float | None) -> str:
 
 
 def status_lines(store: Store, jobs: list[JobRecord], now: float | None = None) -> list[str]:
-    """One line per job: id, name, load, state, GPU, elapsed, exit (and the last log line of a running job)."""
+    """One line per job: id, name, owner, load, state, GPU, elapsed, exit (and the last log line of a running job, or
+    why a waiting one can't start yet)."""
     now = time.time() if now is None else now
-    rows = [("ID", "NAME", "LOAD", "STATE", "GPU", "ELAPSED", "EXIT")]
+    rows = [("ID", "NAME", "OWNER", "LOAD", "STATE", "GPU", "ELAPSED", "EXIT")]
     tails = [""]
     for j in jobs:
         dev = "-" if j.state == "queued" else ("none" if j.gpu is None else str(j.gpu))
         state = j.state + ("*" if j.cancel and not j.final else "")
-        rows.append((str(j.id), j.name, load_label(j.load), state, dev, format_elapsed(j.elapsed(now)),
+        rows.append((str(j.id), j.name, j.owner or "-", load_label(j.load), state, dev, format_elapsed(j.elapsed(now)),
                      "-" if j.exit is None else str(j.exit)))
-        tails.append(f"  {progress.last_line(store.log_path(j.id), 80)}" if j.state == "running" else "")
+        if j.state == "running":
+            tails.append(f"  {progress.last_line(store.log_path(j.id), 80)}")
+        elif j.state == "queued" and j.blocked and not j.cancel:
+            tails.append(f"  waiting: {j.blocked}")
+        else:
+            tails.append("")
     widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
     return [("  ".join(c.ljust(w) for c, w in zip(r, widths)) + t).rstrip() for r, t in zip(rows, tails)]
