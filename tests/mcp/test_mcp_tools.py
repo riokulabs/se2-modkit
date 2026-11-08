@@ -126,7 +126,7 @@ def test_look_finish_and_geocheck_read_the_set(box, tmp_path, monkeypatch):
     (out / "report.json").write_text(json.dumps({"problems": ["missing view top"]}))
     seen = {}
 
-    def finish(o, *, block, stage, rnd, interior=False):
+    def finish(o, *, block, stage, rnd, interior=False, **kw):
         seen.update(block=block, stage=stage, rnd=rnd)
         return {"problems": ["missing view top"]}
     monkeypatch.setattr("se2modkit.preview.look.finish", finish)
@@ -396,3 +396,30 @@ def test_look_out_block_and_finish_are_confined(box, monkeypatch, tmp_path, toym
     elsewhere.mkdir(parents=True)
     res = box.look_finish(str(elsewhere))
     assert res["ok"] is False and "outside" in res["error"]
+
+
+def test_look_diagnostics_reach_the_look_command_and_finish(box, monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr("se2modkit.cli.look_cmd.run_look",
+                        lambda args, env, *, say=None: seen.setdefault("a", args) and {"code": 0, "warnings": []})
+    ref = tmp_path / "pictures" / "front.png"           # read only: anywhere
+    assert box.look("a.glb", "XX_A", no_diag=True, envelope=[2.5, 2.5, 5], reference=str(ref),
+                    reference_view="side")["ok"]
+    a = seen["a"]
+    assert a.no_diag and a.envelope == [2.5, 2.5, 5.0] and a.reference == ref and a.reference_view == "side"
+    seen.clear()
+    box.look("a.glb", "XX_B")
+    assert not seen["a"].no_diag and seen["a"].reference is None and seen["a"].reference_view == "front"
+    got = {}
+
+    def finish(o, *, block, stage, rnd, interior=False, reference=None, reference_view="front"):
+        got.update(reference=reference, reference_view=reference_view)
+        return {"problems": [], "diag": {"sheet": "diag.png", "ortho": "ortho.png"},
+                "reference": {"diff": "refdiff.png", "iou": 0.81}}
+    monkeypatch.setattr("se2modkit.preview.look.finish", finish)
+    out = tmp_path / "cache" / "look" / "XX_A" / "r1"
+    out.mkdir(parents=True)
+    res = box.look_finish(str(out), reference=str(ref), reference_view="side")
+    assert got == {"reference": ref, "reference_view": "side"}
+    assert res["ok"] and res["diag_sheet"] == str(out / "diag.png") and res["ortho"] == str(out / "ortho.png")
+    assert res["refdiff"] == str(out / "refdiff.png") and res["iou"] == 0.81

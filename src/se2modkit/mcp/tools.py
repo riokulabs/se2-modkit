@@ -181,7 +181,9 @@ class Toolbox:
              stage: Literal["look", "concept", "fix"] = "look", round: int | None = None, collection: str = "",
              mount_face: str = "-Z", grid: Literal["large", "small"] = "large", before: str | None = None,
              close: list[str] | None = None, material: dict[str, str] | None = None,
-             tris_budget: int | None = None, no_check: bool = False, full: bool = False,
+             tris_budget: int | None = None, no_check: bool = False, no_diag: bool = False,
+             envelope: list[float] | None = None, reference: str | None = None,
+             reference_view: Literal["front", "side"] = "front", full: bool = False,
              wait: bool = True) -> dict[str, Any]:
         self._plain_name(block, "block")
         mod = self._mod(mod)
@@ -192,8 +194,12 @@ class Toolbox:
         argv += [f"--mod={mod}"] * bool(mod) + [f"--out={out}"] * bool(out) + [f"--before={before}"] * bool(before)
         argv += [f"--round={round}"] * (round is not None)
         argv += [f"--tris-budget={tris_budget}"] * (tris_budget is not None)
+        argv += [f"--reference={reference}"] * bool(reference) + [f"--reference-view={reference_view}"]
+        if envelope is not None:
+            argv.append("--envelope=" + ",".join(f"{v:g}" for v in envelope))
         argv += [f"--close={c}" for c in close or ()] + [f"--material={k}={v}" for k, v in (material or {}).items()]
-        argv += ["--interior"] * interior + ["--no-check"] * no_check + ["--full"] * full + ["--no-wait"] * (not wait)
+        argv += ["--interior"] * interior + ["--no-check"] * no_check + ["--no-diag"] * no_diag
+        argv += ["--full"] * full + ["--no-wait"] * (not wait)
         argv += ["--", source]
         from ..cli.look_cmd import run_look
         log: list[str] = []
@@ -204,13 +210,16 @@ class Toolbox:
         return _jsonable({**res, "log": log})
 
     def look_finish(self, set_dir: str, stage: Literal["look", "concept", "fix"] = "look",
-                    interior: bool = False, mod: str | None = None) -> dict[str, Any]:
+                    interior: bool = False, mod: str | None = None, reference: str | None = None,
+                    reference_view: Literal["front", "side"] = "front") -> dict[str, Any]:
         from ..cli.look_cmd import finish_look
         out = self._confined(set_dir, self._mod(mod), "set_dir")
         if not out.is_dir() or not out.name.startswith("r") or not out.name[1:].isdigit():
             raise ToolFailure(f"{set_dir} is not a look set folder (<look>/<block>/r<N>).")
         return _jsonable({"set_dir": str(out), **finish_look(out, block=out.parent.name, stage=stage,
-                                                             rnd=int(out.name[1:]), interior=interior)})
+                                                             rnd=int(out.name[1:]), interior=interior,
+                                                             reference=Path(reference) if reference else None,
+                                                             reference_view=reference_view)})
 
     def geocheck(self, set_dir: str) -> dict[str, Any]:
         out = Path(set_dir)
@@ -437,14 +446,19 @@ class Toolbox:
                 "Render a fast look set of one block from its working file (.blend, .glb, .gltf, .fbx; read, never "
                 "written) in the look-dev scene, through the job queue, like `se2mod look`. With wait (default) it "
                 "waits for the render, checks the set and returns set_dir, sheet, report_path, not_ready (what keeps "
-                "the set back; empty means ready) and geocheck (the geometry checks' file). With wait=false it "
+                "the set back; empty means ready), geocheck (the geometry checks' file) and the measured views: "
+                "diag_sheet (clay, silhouette, wireframe, numbered parts, sections, sizes), ortho (front, side, top "
+                "in mm; envelope [x, y, z] in meters sets the drawn box) and, with a reference picture (read only), "
+                "refdiff and its silhouette overlap iou against the reference_view. no_diag skips them. With "
+                "wait=false it "
                 "returns job_id and set_dir: call queue_wait, then look_finish. material maps working-file "
                 "materials to Keen slots ({\"rb_Bolt\": \"MetalDull\"}); close names parts to close up on. out, when "
                 "given, must be in the modkit cache or the named mod's preview folder."),
                 read_only=False),
             ToolSpec("look_finish", g(self.look_finish), "Check a rendered look set", (
                 "Check a look set whose render job has ended (after look with wait=false and queue_wait): makes the "
-                "contact sheet and report.json and returns sheet, not_ready and geocheck. set_dir is "
+                "contact sheet, measured views and report.json and returns sheet, not_ready, geocheck, diag_sheet, "
+                "ortho and refdiff (pass the same reference and reference_view as the look call). set_dir is "
                 "<look folder>/<block>/r<N>, in the modkit cache or the named mod's preview folder."),
                 read_only=False, idempotent=True),
             ToolSpec("geocheck", g(self.geocheck), "Read a look set's geometry checks", (
