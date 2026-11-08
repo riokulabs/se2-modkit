@@ -130,6 +130,33 @@ look|concept|fix --round N [--interior]` exits 1 and lists what keeps a set from
 exposure check (too dark, too bright, blown or crushed), a close-up without a locator, an `_after` without a matching
 `_before`, or a failure in the set's `geocheck.json`.
 
+## Your own textures
+
+A block material in the Mod SDK is a `.def` whose texture slots (`ColorMetalTexture`, `NormalRoughnessTexture`,
+`ExtensionsTexture`) each name a `.comptex`. A `.comptex` points at a packing preset and lists the source PNG maps it
+packs; the Mod SDK compresses them to DDS when it builds. `se2mod tex` makes and checks those files for your own maps.
+
+```sh
+se2mod tex new Hull --like PaintedMetalColorable --mod MyMod   # Assets/Textures/Hull/: PNG maps + .comptex files
+se2mod tex check MyMod                                         # exit 1 on any error
+se2mod tex view MyMod/Assets/Textures/Hull                     # or a .glb, with --set DIR for the maps
+```
+
+- `tex new` reads the vanilla material's layout (its packing presets and their inputs) and writes flat placeholder
+  maps: mid-gray albedo, a flat normal, half roughness, no metal, no occlusion, no glow, and a full color mask when
+  the vanilla material is paintable. The `.comptex` files reuse the vanilla preset GUIDs; no vanilla image is read
+  or copied. It prints the GUIDs to put in your material definition's texture slots. `--size` sets the map size
+  (default 1024).
+- Paint normal maps OpenGL style (green up, Blender's default); nothing flips the green channel.
+- `tex check` wants power-of-two sizes, one size per set, RGB albedo and normal maps, grayscale single-value maps
+  (a warning), and every `.comptex` source and preset to resolve. With Pillow installed it also fails a normal map
+  whose blue channel is mostly dark. Any image in the mod that is a byte-for-byte copy of a game texture fails, the
+  same guard `se2mod build` and the publisher run.
+- `tex view` writes a three.js page (three.js 0.160.0 from jsDelivr) into a temporary folder, or `--out DIR`, and
+  serves it on 127.0.0.1 until Ctrl-C (`--no-serve` only writes it). It has sliders for the light, exposure,
+  reflections, normal strength, glow and paint. It refuses files from the game or Mod SDK folders and any copy of a
+  game texture, images embedded in a `.glb` included. It is for your own look-dev: never publish the page.
+
 ## Tests
 
 se2-modkit installs a pytest plugin. It registers the markers `build`, `sdkbuild` (opt-in:

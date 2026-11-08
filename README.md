@@ -46,6 +46,7 @@ Three console scripts: `se2mod` (everything below), `se2publish` (the Workshop p
 | Running the game | `se2mod play`, `se2mod off`, `se2mod on` |
 | Blender and previews | `se2mod blender`, `se2mod build-models`, `se2mod check`, `se2mod preview`, `se2mod sheet`, `se2mod pair`, `se2mod kit` |
 | GPU jobs | `se2mod queue` (run renders and exports within a power budget; `queue gui` for a window, `queue blender` for a live Blender), `se2mod gpu pick`, `se2mod lock` (lease a shared .blend while you edit it) |
+| Textures | `se2mod tex new` (a texture set shaped like a vanilla material), `se2mod tex check`, `se2mod tex view` (local three.js viewer) |
 | Definitions | `se2mod defs`, `se2mod chain`, `se2mod show`, `se2mod copy`, `se2mod override`, `se2mod clone-block` |
 | Game updates | `se2mod deps`, `se2mod facts` |
 | Publishing | `se2mod publish` |

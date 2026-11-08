@@ -67,6 +67,7 @@ def _load_commands() -> None:
         snapshot_cmd,
         style_cmd,
         testrun_cmd,
+        tex_cmd,
         wait_cmd,
     )
 
