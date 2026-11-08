@@ -5,9 +5,14 @@ loses work. A lease says who is editing a file and until when. It is advisory: n
 agents check `active()` before saving and take a lease first. Leases live as JSON files in `<cache>/locks/`, one per
 file (keyed by the file's resolved path, case-folded where the OS ignores case), and every change happens under one
 `FileLock` and lands by an atomic replace, so a reader never sees a half-written lease.
+
+A few well-known names lease a shared resource rather than a file: `live-blender` is the one live, windowed Blender
+(`se2mod queue blender`), which every session drives through the same MCP port. The name means that resource wherever
+it is used, never a file of that name in the current folder.
 """
 from __future__ import annotations
 
+import getpass
 import hashlib
 import json
 import os
@@ -19,6 +24,8 @@ from pathlib import Path
 from .jobqueue import FileLock, QueueError
 
 DEFAULT_TTL = 4 * 3600.0
+LIVE_BLENDER = "live-blender"
+NAMED = {LIVE_BLENDER: "the live, windowed Blender (se2mod queue blender) and the file open in it"}
 LOCK_TIMEOUT = 60.0  # seconds to wait for another se2mod to finish with the lease directory
 
 
@@ -64,9 +71,14 @@ def _dir(cache_dir: Path) -> Path:
     return Path(cache_dir) / "locks"
 
 
-def _file(cache_dir: Path, path: Path) -> tuple[Path, str]:
-    resolved = str(Path(path).resolve())
-    key = os.path.normcase(resolved)  # C:\Foo and c:\foo are one file on Windows; a no-op elsewhere
+def target(path: Path | str) -> str:
+    """What a lease on `path` is keyed by: a well-known name (see NAMED) as it is, else the file's resolved path."""
+    return str(path) if str(path) in NAMED else str(Path(path).resolve())
+
+
+def _file(cache_dir: Path, path: Path | str) -> tuple[Path, str]:
+    resolved = target(path)
+    key = resolved if resolved in NAMED else os.path.normcase(resolved)  # C:\Foo and c:\foo: one file on Windows
     return _dir(cache_dir) / (hashlib.sha256(key.encode()).hexdigest()[:24] + ".json"), resolved
 
 
@@ -102,7 +114,7 @@ def _write(f: Path, lease: Lease) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def take(cache_dir: Path, path: Path, *, owner: str, ttl: float = DEFAULT_TTL, now: float | None = None) -> Lease:
+def take(cache_dir: Path, path: Path | str, *, owner: str, ttl: float = DEFAULT_TTL, now: float | None = None) -> Lease:
     """Lease `path` to `owner` (renewing it if they already hold it); raises LeaseHeld if someone else does."""
     _check_ttl(ttl)
     now = time.time() if now is None else now
@@ -116,7 +128,7 @@ def take(cache_dir: Path, path: Path, *, owner: str, ttl: float = DEFAULT_TTL, n
         return lease
 
 
-def release(cache_dir: Path, path: Path, *, owner: str, force: bool = False, now: float | None = None) -> bool:
+def release(cache_dir: Path, path: Path | str, *, owner: str, force: bool = False, now: float | None = None) -> bool:
     """Drop the lease on `path`; False when there was none. Only its owner may, unless `force`."""
     now = time.time() if now is None else now
     f, _ = _file(cache_dir, path)
@@ -135,3 +147,16 @@ def active(cache_dir: Path, *, now: float | None = None) -> list[Lease]:
     now = time.time() if now is None else now
     leases = [x for f in sorted(_dir(cache_dir).glob("*.json")) if (x := _read(f)) and not x.expired(now)]
     return sorted(leases, key=lambda x: x.since)
+
+
+def holder_name(owner: str | None) -> str:
+    """The name a lease is held under: `owner`, else $SE2_SESSION, else the user name (as `se2mod lock` does)."""
+    return owner or os.environ.get("SE2_SESSION") or getpass.getuser()
+
+
+def held_by_other(cache_dir: Path, path: Path | str, *, owner: str, now: float | None = None) -> Lease | None:
+    """The lease on `path` when someone other than `owner` holds it and it has not expired, else None. A read only:
+    leases land by an atomic replace, so no lock is needed."""
+    now = time.time() if now is None else now
+    held = _read(_file(cache_dir, path)[0])
+    return held if held and not held.expired(now) and held.owner != owner else None

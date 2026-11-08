@@ -54,7 +54,7 @@ def test_status_log_and_cancel(run, q):
     code, out, _ = run("queue", "--queue-dir", str(qdir), "status")
     assert code == 0 and "runner: not running" in out
     rows = [ln.split() for ln in out.splitlines()[2:]]
-    assert rows == [["1", "echo", "heavy", "queued", "-", "-", "-"], ["2", "b", "heavy", "done", "none", "2s", "0"]]
+    assert rows == [["1", "echo", "-", "heavy", "queued", "-", "-", "-"], ["2", "b", "-", "heavy", "done", "none", "2s", "0"]]
     assert run("queue", "--queue-dir", str(qdir), "list")[1] == out
 
     assert run("queue", "--queue-dir", str(qdir), "log", "2")[:2] == (0, "hello\n")

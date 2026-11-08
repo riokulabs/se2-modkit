@@ -125,11 +125,14 @@ def test_exit_codes_and_status_lines(tmp_path):
     assert Q.exit_code(_job(1, state="timeout", exit=143)) == Q.EXIT_TIMEOUT == 124
     assert Q.exit_code(_job(1, state="cancelled", exit=143)) == Q.EXIT_CANCELLED == 125
     store = Q.Store(tmp_path)
-    lines = Q.status_lines(store, [_job(1, state="done", exit=0, started=10.0, ended=135.0, gpu=1),
-                                   _job(2, Q.LOADS["light"])], now=200.0)
-    assert lines[0].split() == ["ID", "NAME", "LOAD", "STATE", "GPU", "ELAPSED", "EXIT"]
-    assert lines[1].split() == ["1", "j1", "heavy", "done", "1", "2m05s", "0"]
-    assert lines[2].split() == ["2", "j2", "light", "queued", "-", "-", "-"]
+    lines = Q.status_lines(store, [_job(1, state="done", exit=0, started=10.0, ended=135.0, gpu=1, owner="A"),
+                                   _job(2, Q.LOADS["light"]),
+                                   _job(3, blocked="/w/x.blend is leased to B")], now=200.0)
+    assert lines[0].split() == ["ID", "NAME", "OWNER", "LOAD", "STATE", "GPU", "ELAPSED", "EXIT"]
+    assert lines[1].split() == ["1", "j1", "A", "heavy", "done", "1", "2m05s", "0"]
+    assert lines[2].split() == ["2", "j2", "-", "light", "queued", "-", "-", "-"]
+    assert lines[3].split()[:5] == ["3", "j3", "-", "heavy", "queued"]
+    assert lines[3].endswith("waiting: /w/x.blend is leased to B")
 
 
 # --- store -----------------------------------------------------------------------------------------------------------
@@ -623,3 +626,135 @@ def test_cli_submit_priority(tmp_path, capsys, monkeypatch):
     assert cli.main(["queue", "--queue-dir", str(qdir), "submit", "--priority", "--", "true"]) == 0
     job = Q.Store(qdir).load(int(capsys.readouterr().out.strip()))
     assert job.priority is True
+
+
+# --- owners and leases -----------------------------------------------------------------------------------------------
+
+def _q(qdir, *args):
+    from se2modkit import cli
+    return cli.main(["queue", "--queue-dir", str(qdir), *args])
+
+
+@pytest.fixture
+def isolated(monkeypatch, tmp_path):
+    for name in ("SE2MODKIT_CONFIG", "SE2_WORKSPACE", "SE2_SESSION"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setattr(Q, "ensure_runner", lambda store: None)                # no real runner in a test
+    return tmp_path / "q"
+
+
+def _submitted(qdir, capsys):
+    return Q.Store(qdir).load(int(capsys.readouterr().out.strip()))
+
+
+def test_submit_records_the_owner(isolated, capsys, monkeypatch):
+    assert _q(isolated, "submit", "--", "true") == 0
+    assert _submitted(isolated, capsys).owner == ""                            # unknown
+    monkeypatch.setenv("SE2_SESSION", "Session A")
+    assert _q(isolated, "submit", "--", "true") == 0
+    assert _submitted(isolated, capsys).owner == "Session A"
+    assert _q(isolated, "submit", "--owner", "Tools", "--", "true") == 0
+    assert _submitted(isolated, capsys).owner == "Tools"
+    assert _q(isolated, "status") == 0
+    out = capsys.readouterr().out
+    assert "OWNER" in out and "Session A" in out and "Tools" in out
+
+
+def test_cancel_refuses_someone_elses_job(tmp_path):
+    store = Q.Store(tmp_path)
+    mine = store.submit(["true"], owner="A", environ={})
+    theirs = store.submit(["true"], owner="B", environ={})
+    nobody = store.submit(["true"], environ={})
+    done, refused = store.cancel_as([mine.id, theirs.id, nobody.id], by="A")
+    assert [j.id for j in done] == [mine.id, nobody.id]
+    assert [j.id for j in refused] == [theirs.id]
+    assert store.load(theirs.id).state == "queued"
+    done, refused = store.cancel_as([theirs.id], by="A", force=True)
+    assert [j.id for j in done] == [theirs.id] and refused == []
+
+
+def test_cli_cancel_names_the_owner_and_takes_force(isolated, capsys, monkeypatch):
+    store = Q.Store(isolated)
+    job = store.submit(["true"], owner="B", environ={})
+    monkeypatch.setenv("SE2_SESSION", "A")
+    assert _q(isolated, "cancel", str(job.id)) == 1
+    err = capsys.readouterr().err
+    assert "B" in err and "--force" in err
+    assert store.load(job.id).state == "queued"
+    assert _q(isolated, "cancel", "--all") == 0                                # --all skips other owners' jobs
+    assert store.load(job.id).state == "queued"
+    capsys.readouterr()
+    assert _q(isolated, "cancel", str(job.id), "--force") == 0
+    assert store.load(job.id).state == "cancelled"
+
+
+def test_cli_submit_refuses_writing_a_file_leased_to_someone_else(isolated, capsys, tmp_path):
+    from se2modkit import cli, lease
+    blend = tmp_path / "drive.blend"
+    assert cli.main(["lock", "take", str(blend), "--owner", "B"]) == 0
+    capsys.readouterr()
+    assert _q(isolated, "submit", "--owner", "A", "--writes", str(blend), "--", "true") == 1
+    assert "held by B" in capsys.readouterr().err
+    assert Q.Store(isolated).all() == []
+    assert _q(isolated, "submit", "--owner", "A", "--reads", str(blend), "--", "true") == 0   # reading only warns
+    out, err = capsys.readouterr()
+    job = Q.Store(isolated).load(int(out.strip()))
+    assert "B" in err and job.reads == [str(blend.resolve())]
+    assert _q(isolated, "submit", "--owner", "B", "--writes", str(blend), "--", "true") == 0  # the holder may
+    job = _submitted(isolated, capsys)
+    assert job.writes == [str(blend.resolve())] and job.lease_dir
+    assert lease.held_by_other(Path(job.lease_dir), blend, owner="A") is not None
+
+
+def test_a_job_waits_while_a_file_it_writes_is_leased_to_someone_else(runner, tmp_path):
+    from se2modkit import lease
+    cache, blend = tmp_path / "cache", tmp_path / "drive.blend"
+    job = runner.store.submit(["true"], owner="A", writes=[str(blend)], lease_dir=cache, environ={})
+    lease.take(cache, blend, owner="B", ttl=3600)                             # taken after the submit
+    runner.tick()
+    runner.tick()
+    held = runner.store.load(job.id)
+    assert held.state == "queued" and "B" in held.blocked and str(blend.resolve()) in held.blocked
+    assert "waiting:" in Q.status_lines(runner.store, [held])[1]
+    lease.release(cache, blend, owner="B")
+    _spin(runner, lambda: runner.store.load(job.id).final)
+    done = runner.store.load(job.id)
+    assert done.state == "done" and done.blocked == ""
+
+
+def test_a_job_waiting_on_a_lease_does_not_hold_back_others(runner, tmp_path):
+    from se2modkit import lease
+    cache, blend = tmp_path / "cache", tmp_path / "drive.blend"
+    lease.take(cache, blend, owner="B", ttl=3600)
+    first = runner.store.submit(["true"], owner="A", writes=[str(blend)], lease_dir=cache, environ={})
+    second = runner.store.submit(["true"], owner="A", environ={})
+    _spin(runner, lambda: runner.store.load(second.id).final)
+    assert runner.store.load(first.id).state == "queued"
+
+
+def test_an_unowned_job_checks_leases_as_its_submitter_not_the_runner(runner, tmp_path, monkeypatch):
+    """The runner is long-lived and inherits the environment of whichever session started it, so a job with no owner
+    is checked under the lease holder name its submitter had, recorded at submit, never under the runner's."""
+    from se2modkit import lease
+    monkeypatch.setenv("SE2_SESSION", "runner-session")
+    cache, mine, theirs = tmp_path / "cache", tmp_path / "mine.blend", tmp_path / "theirs.blend"
+    lease.take(cache, mine, owner="submitter", ttl=3600)
+    lease.take(cache, theirs, owner="runner-session", ttl=3600)
+    ok = runner.store.submit(["true"], writes=[str(mine)], lease_holder="submitter", lease_dir=cache, environ={})
+    held = runner.store.submit(["true"], writes=[str(theirs)], lease_holder="submitter", lease_dir=cache,
+                               environ={})
+    assert runner.store.load(ok.id).owner == ""
+    _spin(runner, lambda: runner.store.load(ok.id).final)
+    job = runner.store.load(held.id)
+    assert job.state == "queued" and "runner-session" in job.blocked
+
+
+def test_cli_submit_records_the_lease_holder(isolated, capsys, monkeypatch):
+    from se2modkit import lease
+    assert _q(isolated, "submit", "--", "true") == 0
+    job = _submitted(isolated, capsys)
+    assert (job.owner, job.lease_holder) == ("", lease.holder_name(None))
+    monkeypatch.setenv("SE2_SESSION", "Session B")
+    assert _q(isolated, "submit", "--", "true") == 0
+    assert _submitted(isolated, capsys).lease_holder == "Session B"

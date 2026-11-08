@@ -59,3 +59,12 @@ def test_a_busy_lock_exits_1_with_one_plain_sentence(tmp_path, capsys, monkeypat
     assert cli.main(["lock", "take", str(tmp_path / "drive.blend")]) == 1
     err = capsys.readouterr().err.strip()
     assert len(err.splitlines()) == 1 and err.endswith(".") and "queue lock" not in err
+
+
+def test_live_blender_lease_and_help(tmp_path, capsys):
+    assert cli.main(["lock", "take", "live-blender", "--owner", "A"]) == 0
+    assert cli.main(["lock", "take", "live-blender", "--owner", "B"]) == 1
+    assert "live-blender is held by A" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        cli.main(["lock", "take", "--help"])
+    assert "live-blender" in capsys.readouterr().out
