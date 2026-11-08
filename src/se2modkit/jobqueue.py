@@ -144,6 +144,7 @@ class JobRecord:
     reads: list[str] = field(default_factory=list)    # files the job reads (resolved, or a lease name)
     writes: list[str] = field(default_factory=list)   # files it writes: it waits while one is leased to someone else
     lease_dir: str = ""                  # the cache folder whose leases `writes` is checked against
+    lease_holder: str = ""               # the lease holder name the submitter had (their own leases never hold it)
     blocked: str = ""                    # why a waiting job can't start yet (a lease), shown by status
 
     @property
@@ -175,7 +176,8 @@ def lease_wait(job: JobRecord, now: float | None = None) -> str:
         return ""
     from . import lease
     for path in job.writes:
-        held = lease.held_by_other(Path(job.lease_dir), path, owner=job.owner or lease.holder_name(None), now=now)
+        # Only what the submitter recorded: the runner's own environment belongs to whoever started it.
+        held = lease.held_by_other(Path(job.lease_dir), path, owner=job.lease_holder or job.owner, now=now)
         if held is not None:
             return f"{held.path} is leased to {held.owner}"
     return ""
@@ -333,17 +335,19 @@ class Store:
     def submit(self, argv: list[str], *, name: str = "", load: float = HEAVY, gpu: str | int = "auto",
                cwd: Path | str | None = None, timeout: float | None = None, env: Mapping[str, str] | None = None,
                environ: Mapping[str, str] = os.environ, kind: str = "", priority: bool = False, owner: str = "",
-               reads: list[str] = (), writes: list[str] = (), lease_dir: Path | str | None = None) -> JobRecord:
+               reads: list[str] = (), writes: list[str] = (), lease_dir: Path | str | None = None,
+               lease_holder: str | None = None) -> JobRecord:
         """Add a job; returns it with its new id. `environ` is the submitter's environment (see CAPTURED_ENV);
         `priority` puts it in the priority lane. `owner` names the submitting session; `writes` lists files the job
-        must not start writing while someone else holds a lease on them in `lease_dir` (see the lease module)."""
+        must not start writing while someone else holds a lease on them in `lease_dir` (see the lease module);
+        `lease_holder` is the name the submitter's own leases are held under (default: `owner`)."""
         with self.lock():
             return self._new_job(argv, name=name, load=load, gpu=gpu, cwd=cwd, timeout=timeout, env=env,
                                  environ=environ, kind=kind, priority=priority, owner=owner, reads=reads,
-                                 writes=writes, lease_dir=lease_dir)
+                                 writes=writes, lease_dir=lease_dir, lease_holder=lease_holder)
 
     def _new_job(self, argv, *, name, load, gpu, cwd, timeout, env, environ, kind, priority, rank=None, owner="",
-                 reads=(), writes=(), lease_dir=None) -> JobRecord:
+                 reads=(), writes=(), lease_dir=None, lease_holder=None) -> JobRecord:
         """Create and save a job; the caller holds the queue lock."""
         if not argv:
             raise QueueError("Nothing to run: put the command after --.")
@@ -360,7 +364,8 @@ class Store:
                         cwd=str(Path(cwd if cwd is not None else os.getcwd()).resolve()), timeout=timeout,
                         env=job_env, submitted=time.time(), kind=kind, priority=priority, rank=rank, owner=owner,
                         reads=[_lease_target(p) for p in reads], writes=[_lease_target(p) for p in writes],
-                        lease_dir=str(lease_dir) if lease_dir is not None else "")
+                        lease_dir=str(lease_dir) if lease_dir is not None else "",
+                        lease_holder=owner if lease_holder is None else lease_holder)
         self.save(job)
         return job
 

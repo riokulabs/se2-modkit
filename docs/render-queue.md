@@ -42,6 +42,8 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 | `--writes PATH` | A file the job writes (repeatable). Refused when someone else holds a lease on it; a lease taken after the submit keeps the job waiting until it is released |
 | `--reads PATH` | A file the job reads (repeatable): a warning on stderr when someone else holds a lease on it |
 
+A relative `--writes` or `--reads` path is taken from the folder you submit from, not from `--cwd`. A job with no owner is checked against leases under the name you had when you submitted it (`$SE2_SESSION`, else your user name).
+
 Everything after the first `--` is the command, taken verbatim (a `--` of its own, as in
 `blender -b --python build.py -- all`, stays part of it). In the command, `{gpu}` is replaced with the chosen Vulkan device index, which is also exported as
 `SE2_GPU_DEVICE`. With no GPU choice both are `0`. Every command also takes `--queue-dir DIR` before the subcommand

@@ -733,12 +733,28 @@ def test_a_job_waiting_on_a_lease_does_not_hold_back_others(runner, tmp_path):
     assert runner.store.load(first.id).state == "queued"
 
 
-def test_a_job_with_no_owner_is_not_held_back_by_its_own_users_lease(runner, tmp_path, monkeypatch):
-    """`se2mod lock` holds a lease under the user name when there is no session name; a job with no owner from that
-    same user is theirs, not someone else's."""
+def test_an_unowned_job_checks_leases_as_its_submitter_not_the_runner(runner, tmp_path, monkeypatch):
+    """The runner is long-lived and inherits the environment of whichever session started it, so a job with no owner
+    is checked under the lease holder name its submitter had, recorded at submit, never under the runner's."""
     from se2modkit import lease
-    monkeypatch.delenv("SE2_SESSION", raising=False)
-    cache, blend = tmp_path / "cache", tmp_path / "drive.blend"
-    lease.take(cache, blend, owner=lease.holder_name(None), ttl=3600)
-    job = runner.store.submit(["true"], writes=[str(blend)], lease_dir=cache, environ={})
-    _spin(runner, lambda: runner.store.load(job.id).final)
+    monkeypatch.setenv("SE2_SESSION", "runner-session")
+    cache, mine, theirs = tmp_path / "cache", tmp_path / "mine.blend", tmp_path / "theirs.blend"
+    lease.take(cache, mine, owner="submitter", ttl=3600)
+    lease.take(cache, theirs, owner="runner-session", ttl=3600)
+    ok = runner.store.submit(["true"], writes=[str(mine)], lease_holder="submitter", lease_dir=cache, environ={})
+    held = runner.store.submit(["true"], writes=[str(theirs)], lease_holder="submitter", lease_dir=cache,
+                               environ={})
+    assert runner.store.load(ok.id).owner == ""
+    _spin(runner, lambda: runner.store.load(ok.id).final)
+    job = runner.store.load(held.id)
+    assert job.state == "queued" and "runner-session" in job.blocked
+
+
+def test_cli_submit_records_the_lease_holder(isolated, capsys, monkeypatch):
+    from se2modkit import lease
+    assert _q(isolated, "submit", "--", "true") == 0
+    job = _submitted(isolated, capsys)
+    assert (job.owner, job.lease_holder) == ("", lease.holder_name(None))
+    monkeypatch.setenv("SE2_SESSION", "Session B")
+    assert _q(isolated, "submit", "--", "true") == 0
+    assert _submitted(isolated, capsys).lease_holder == "Session B"

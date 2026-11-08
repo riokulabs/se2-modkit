@@ -82,9 +82,11 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     s.add_argument("--writes", type=Path, action="append", default=[], metavar="PATH",
                    help="a file the job writes (repeatable). Refused while someone else holds a lease on it (se2mod "
                         "lock); a lease taken after the submit makes the job wait until it is released. "
-                        f"{lease.LIVE_BLENDER} names the live Blender")
+                        f"{lease.LIVE_BLENDER} names the live Blender. A relative PATH is taken from the folder you "
+                        "submit from, not --cwd")
     s.add_argument("--reads", type=Path, action="append", default=[], metavar="PATH",
-                   help="a file the job reads (repeatable): a warning if someone else holds a lease on it")
+                   help="a file the job reads (repeatable): a warning if someone else holds a lease on it. A relative "
+                        "PATH is taken from the folder you submit from, not --cwd")
     s.add_argument("script_args", nargs="*", metavar="CMD", help="the command and its arguments, after --")
 
     w = sub.add_parser("wait", help="wait for a job; exits with its exit code (124 timeout, 125 cancelled)")
@@ -176,7 +178,7 @@ def _dispatch(args, env, store: Q.Store) -> int:
             raise Q.QueueError(str(e)) from None
         job = store.submit(argv, name=args.name, load=args.load, gpu=args.gpu, cwd=args.cwd, timeout=args.timeout,
                            env=dict(args.env), priority=args.priority, owner=owner, reads=args.reads,
-                           writes=args.writes, lease_dir=env.cache_dir)
+                           writes=args.writes, lease_dir=env.cache_dir, lease_holder=holder)
         print(job.id)
         Q.ensure_runner(store)
         return 0
