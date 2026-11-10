@@ -63,15 +63,16 @@ def next_round(block_dir: Path) -> int:
     return max(nums, default=0) + 1
 
 
-def material_key(name: str, table: dict) -> tuple[str, bool]:
+def material_key(name: str, table: dict, paint: str = "keen") -> tuple[str, bool]:
     """(stand-in key, unmapped?) for a working-file material: the mod's `[lookdev.materials]` table first, then the
-    Keen slot rules; anything else is the loud `Unmapped` magenta and is reported."""
+    Keen slot rules; anything else is the loud `Unmapped` magenta and is reported. `paint` is the player paint the
+    paintable slots wear."""
     from . import mats
     base = name.split(".")[0]
     if base in table:
-        return mats.slot_key(table[base]), False
+        return mats.slot_key(table[base], paint), False
     if mats.drawable_slot(name):
-        return mats.slot_key(name), False
+        return mats.slot_key(name, paint), False
     return UNMAPPED, True
 
 
@@ -101,9 +102,10 @@ def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, 
               collection: str = "", mount_face: str = "-Z", grid: str = "large", neighbors=(), materials=None,
               armor_dir: Path | None = None, before: Path | None = None, close=(), fast: bool = True,
               geocheck: bool = True, tris_budget: int | None = None, diag: bool = True, envelope=None,
-              reference: Path | None = None, reference_view: str = "front") -> dict:
+              reference: Path | None = None, reference_view: str = "front", paint: str = "keen") -> dict:
     """The JSON `look_run` reads. `diag` adds the measured views (`preview.diag`); `envelope` is the block's size
-    in meters along the source's X, Y, Z; `reference` a front or side picture to compare silhouettes with."""
+    in meters along the source's X, Y, Z; `reference` a front or side picture to compare silhouettes with; `paint`
+    the player paint on the block's paintable slots (a `mats.PAINTS` name or `#RRGGBB`; the scene keeps "keen")."""
     source = Path(source)
     if not source.is_file():
         raise PreviewError(f"no such file: {source}")
@@ -114,6 +116,10 @@ def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, 
         raise PreviewError(f"not a Keen material slot: {', '.join(bad)} (use slot names such as PaintedMetalDarker, "
                            "MetalDull, BrushedMetal; a vanilla slot with no stand-in, such as HydrogenThrusterCone, "
                            "needs the Mod SDK's source maps).")
+    try:
+        paint_rgb = mats.paint_rgb(paint)
+    except ValueError as e:
+        raise PreviewError(f"--paint: {e}") from None
     lookdev.set_spec(set_name)
     lookdev.mount_rotation(mount_face)
     from . import diag as DG
@@ -135,7 +141,7 @@ def build_job(*, source: Path, block: str, out_dir: Path, stage: str, rnd: int, 
         "fast": fast, "load": LOAD, "priority": True, "geocheck": geocheck, "tris_budget": tris_budget,
         "diag": diag, "envelope": [float(v) for v in envelope] if envelope is not None else None,
         "reference": str(Path(reference).resolve()) if reference is not None else None,
-        "reference_view": reference_view,
+        "reference_view": reference_view, "paint": paint, "paint_rgb": list(paint_rgb),
     }
 
 

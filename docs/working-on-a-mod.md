@@ -37,7 +37,8 @@ lug, coplanar faces, parts passing clean through others, box-projected UVs on cu
 triangle budget given with `--tris-budget`; if the checks themselves stop on an error, the set fails with that error
 and its report is still written). `--no-check` skips them for a quick warp test (a `--tris-budget` given with it is
 not checked, and the command warns). Material names that are not Keen slots map
-through `[lookdev.materials]`; anything still unmapped renders magenta. No LODs, fracture or export: those come with
+through `[lookdev.materials]`; anything still unmapped renders magenta. `--paint` sets the player paint on the
+block's paintable slots (`gunmetal`, `black`, `blue`, ... or `#RRGGBB`); the default is Keen's light grey. No LODs, fracture or export: those come with
 `se2mod build-models` once the look is approved.
 
 Beside every look set go measured views (`src/se2modkit/preview/diag.py`), because a lit, textured picture is the

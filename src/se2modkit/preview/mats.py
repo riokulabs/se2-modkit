@@ -87,7 +87,22 @@ def _cache():
 PAINTS = {"keen": (0.40, 0.41, 0.43), "black": (0.022, 0.023, 0.026), "blue": (0.035, 0.12, 0.42),
           "orange": (0.75, 0.22, 0.03), "white": (0.75, 0.76, 0.78), "teal": (0.02, 0.30, 0.28)}
 PAINTS["red"] = (0.50, 0.035, 0.03)
+PAINTS["gunmetal"] = (0.085, 0.095, 0.115)   # mid blue-grey gunmetal, between "keen" and "black"
 PAINT_REF = 0.40
+
+
+def paint_rgb(paint: str) -> tuple[float, float, float]:
+    """Linear RGB of a paint: a `PAINTS` name, or `#RRGGBB` (sRGB, as a color picker shows it)."""
+    if paint in PAINTS:
+        return PAINTS[paint]
+    h = paint[1:] if paint.startswith("#") else ""
+    if len(h) != 6 or any(c not in "0123456789abcdefABCDEF" for c in h):
+        raise ValueError(f"paint {paint!r}: give one of {', '.join(sorted(PAINTS))}, or #RRGGBB")
+
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    return tuple(round(lin(int(h[i:i + 2], 16)), 4) for i in (0, 2, 4))
 _CACHE = {}
 _IMG = {}
 

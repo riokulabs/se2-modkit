@@ -34,7 +34,7 @@ environment discovery (`--sdk`, `--blender`, the user config, `SE2_*` variables)
 
 | Tool | Reads only | Does |
 |---|---|---|
-| `look` | no | a look set of a block through the job queue (as `se2mod look`); returns `set_dir`, `sheet`, `report_path`, `not_ready`, `geocheck` and the measured views (`diag_sheet`, `ortho`, `refdiff` with its `iou`) |
+| `look` | no | a look set of a block through the job queue (as `se2mod look`; `paint` sets the player paint); returns `set_dir`, `sheet`, `report_path`, `not_ready`, `geocheck` and the measured views (`diag_sheet`, `ortho`, `refdiff` with its `iou`) |
 | `look_finish` | no | checks a set whose render ended (after `look` with `wait: false` and `queue_wait`): sheet and report |
 | `geocheck` | yes | a look set's geometry check results (`geocheck.json`) and its `not_ready` list |
 | `describe` | no | a block model as numbers through the queue (as `se2mod describe`); returns the report as data |

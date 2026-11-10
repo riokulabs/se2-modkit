@@ -184,7 +184,7 @@ class Toolbox:
              tris_budget: int | None = None, no_check: bool = False, no_diag: bool = False,
              envelope: list[float] | None = None, reference: str | None = None,
              reference_view: Literal["front", "side"] = "front", full: bool = False,
-             wait: bool = True) -> dict[str, Any]:
+             wait: bool = True, paint: str = "keen") -> dict[str, Any]:
         self._plain_name(block, "block")
         mod = self._mod(mod)
         if out:
@@ -192,7 +192,7 @@ class Toolbox:
         argv = ["look", f"--block={block}", f"--set={set_name}", f"--views={views}", f"--stage={stage}",
                 f"--collection={collection}", f"--mount-face={mount_face}", f"--grid={grid}"]
         argv += [f"--mod={mod}"] * bool(mod) + [f"--out={out}"] * bool(out) + [f"--before={before}"] * bool(before)
-        argv += [f"--round={round}"] * (round is not None)
+        argv += [f"--round={round}"] * (round is not None) + [f"--paint={paint}"]
         argv += [f"--tris-budget={tris_budget}"] * (tris_budget is not None)
         argv += [f"--reference={reference}"] * bool(reference) + [f"--reference-view={reference_view}"]
         if envelope is not None:
@@ -452,7 +452,8 @@ class Toolbox:
                 "refdiff and its silhouette overlap iou against the reference_view. no_diag skips them. With "
                 "wait=false it "
                 "returns job_id and set_dir: call queue_wait, then look_finish. material maps working-file "
-                "materials to Keen slots ({\"rb_Bolt\": \"MetalDull\"}); close names parts to close up on. out, when "
+                "materials to Keen slots ({\"rb_Bolt\": \"MetalDull\"}); close names parts to close up on; paint is the player paint on the paintable slots (keen, black, "
+                "blue, gunmetal, orange, red, teal, white, or #RRGGBB). out, when "
                 "given, must be in the modkit cache or the named mod's preview folder."),
                 read_only=False),
             ToolSpec("look_finish", g(self.look_finish), "Check a rendered look set", (
