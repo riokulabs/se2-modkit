@@ -300,3 +300,14 @@ def test_any_error_drawing_the_diagnostic_keeps_the_set(tmp_path, monkeypatch):
     report = look.finish(out, block="XX", stage="look", rnd=1)
     assert report["problems"] == [] and report["warnings"] == ["diagnostic views: TypeError: unexpected"]
     assert (out / "report.json").is_file()
+
+
+def test_paint_reaches_the_paintable_slots_only():
+    from se2modkit.preview import mats
+    key, missing = look.material_key("PaintedMetalColorable.001", {}, "gunmetal")
+    assert key.endswith(":gunmetal") and not missing     # PMC:… or, with the SDK's maps, SDK:…
+    assert "gunmetal" not in look.material_key("BrushedMetal", {}, "gunmetal")[0]
+    assert mats.paint_rgb("keen") == mats.PAINTS["keen"]
+    assert mats.paint_rgb("#ffffff") == (1.0, 1.0, 1.0) and mats.paint_rgb("#000000") == (0.0, 0.0, 0.0)
+    with pytest.raises(ValueError):
+        mats.paint_rgb("#12345")

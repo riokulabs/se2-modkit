@@ -127,3 +127,22 @@ def test_a_reference_with_no_diag_is_one_plain_line(tmp_path, capsys):
     rc = cli.main(["look", str(src), "--block", "X", "--out", str(tmp_path / "look"), "--print-only", "--no-diag",
                    "--reference", str(ref)])
     assert rc == 1 and "drop --no-diag" in capsys.readouterr().err
+
+
+def test_paint_reaches_the_job(tmp_path):
+    src = tmp_path / "drive.glb"
+    src.write_bytes(b"glTF")
+    assert cli.main(["look", str(src), "--block", "X", "--out", str(tmp_path / "look"), "--print-only",
+                     "--paint", "gunmetal"]) == 0
+    job = json.loads((tmp_path / "look" / "X" / "r1" / "job.json").read_text())
+    assert job["paint"] == "gunmetal" and len(job["paint_rgb"]) == 3
+
+
+def test_paint_defaults_to_keen_and_a_bad_one_is_one_plain_line(tmp_path, capsys):
+    src = tmp_path / "drive.glb"
+    src.write_bytes(b"glTF")
+    assert cli.main(["look", str(src), "--block", "X", "--out", str(tmp_path / "look"), "--print-only"]) == 0
+    assert json.loads((tmp_path / "look" / "X" / "r1" / "job.json").read_text())["paint"] == "keen"
+    assert cli.main(["look", str(src), "--block", "Y", "--out", str(tmp_path / "look"), "--print-only",
+                     "--paint", "mauve"]) != 0
+    assert "--paint" in capsys.readouterr().err

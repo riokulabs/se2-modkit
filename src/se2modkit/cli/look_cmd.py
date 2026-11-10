@@ -37,6 +37,9 @@ def _args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--close", action="append", default=[], metavar="PART", help="a close-up of this part (repeatable)")
     p.add_argument("--material", action="append", default=[], metavar="NAME=SLOT",
                    help="map a working-file material to a Keen slot, on top of [lookdev.materials] (repeatable)")
+    p.add_argument("--paint", default="keen", metavar="PAINT",
+                   help="player paint on the block's paintable slots: keen (default), black, blue, gunmetal, orange, "
+                        "red, teal, white, or #RRGGBB (sRGB); the scene around it keeps the default")
     p.add_argument("--tris-budget", type=int, metavar="N", help="fail the set over N triangles (the kit's budget)")
     p.add_argument("--no-check", action="store_true", help="skip the geometry checks (a quick warp test)")
     p.add_argument("--no-diag", action="store_true",
@@ -114,7 +117,8 @@ def run_look(args: argparse.Namespace, env: SE2Env, *, say=None) -> dict:
                              armor_dir=armor if armor and armor.is_dir() else None, before=args.before,
                              close=args.close, fast=not args.full, geocheck=not args.no_check,
                              tris_budget=args.tris_budget, diag=not args.no_diag, envelope=args.envelope,
-                             reference=args.reference, reference_view=args.reference_view)
+                             reference=args.reference, reference_view=args.reference_view,
+                             paint=args.paint)
     except (PreviewError, PL.PlanError, ProjectError) as e:
         return {**res, "code": 1, "error": str(e)}
     if args.no_check and args.tris_budget is not None:

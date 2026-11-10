@@ -94,7 +94,7 @@ def _render_meshes(coll) -> list:
     return list(dict.fromkeys(out))
 
 
-def _materials(objs, table: dict) -> list[str]:
+def _materials(objs, table: dict, paint: str = "keen") -> list[str]:
     unmapped = []
     for o in objs:
         if o.type != "MESH":
@@ -102,7 +102,7 @@ def _materials(objs, table: dict) -> list[str]:
         for s in o.material_slots:
             if s.material is None:
                 continue
-            key, missing = look.material_key(s.material.name, table)
+            key, missing = look.material_key(s.material.name, table, paint)
             if missing and s.material.name not in unmapped:
                 unmapped.append(s.material.name)
             s.material = PM.get(key)
@@ -170,7 +170,10 @@ def run(job: dict) -> dict:
     objs = _render_meshes(holder)
     if not objs:
         raise SystemExit(f"ERROR: nothing to render in {Path(job['source']).name}")
-    unmapped = _materials(objs, job["materials"])
+    paint = job.get("paint", "keen")
+    if paint not in PM.PAINTS:   # a #RRGGBB paint: register it for this session's stand-ins
+        PM.PAINTS[paint] = tuple(job["paint_rgb"])
+    unmapped = _materials(objs, job["materials"], paint)
     bpy.context.view_layer.update()
     rot = Matrix(lookdev.mount_rotation(job["mount_face"])).to_4x4()
     pts = _points(objs, rot)
