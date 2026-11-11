@@ -1,4 +1,4 @@
 # Game builds this release was tested against. See compat.py for how it is used.
-game_versions_tested = ["4.0.0.3155", "4.0.0.3165"]
+game_versions_tested = ["4.0.0.3155", "4.0.0.3165", "4.0.0.3169"]
 game_min = "4.0.0.3151"
-sdk_buildid_tested = 26164168
+sdk_buildid_tested = 26537140

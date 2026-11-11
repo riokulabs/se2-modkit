@@ -11,7 +11,8 @@ def c():
 def test_compat_values(c):
     assert c.game_min == "4.0.0.3151"
     assert "4.0.0.3155" in c.game_versions_tested and "4.0.0.3165" in c.game_versions_tested
-    assert c.sdk_buildid_tested == 26164168
+    assert "4.0.0.3169" in c.game_versions_tested
+    assert c.sdk_buildid_tested == 26537140
 
 
 def test_untested_warns(c):
