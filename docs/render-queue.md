@@ -24,7 +24,6 @@ se2mod queue wait "$id" --timeout 3600    # exits with Blender's own exit code
 | `se2mod queue pause` / `resume` | Pause the queue (running jobs carry on, nothing new starts) or resume it |
 | `se2mod queue move ID --top \| --bottom \| --up \| --down \| --to N` | Move a waiting job within the queue (`--to 1` is next to start) |
 | `se2mod queue blender [FILE.blend] [--gpu auto\|N]` | Start a live, windowed Blender as a queue job, next in line (see below) |
-| `se2mod queue gui` | Open a window on the queue and the GPUs (see below) |
 | `se2mod queue run [--idle-exit S]` | Run the runner in the foreground (for debugging; `submit` normally starts it) |
 
 `submit` options:
@@ -153,22 +152,6 @@ saved goes to `~/.cache/se2modkit/live-blender/`) and quit. The queue gives that
 kills Blender (other jobs get 10 s). It saves even when Blender doesn't flag the file as changed,
 because edits made through Python (the MCP add-on) don't flag it; the save keeps Blender's `.blend1` backup. A tool that needs Blender open waits for the job to run,
 then talks to it through the MCP add-on, and the maintainer can watch the window as it works.
-
-## The queue window
-
-`se2mod queue gui` opens a small Qt window that refreshes every second. It needs PySide6: `pip install
-'se2modkit[gui]'`.
-
-- **GPUs:** each card's load, VRAM in use, edge and hot-spot temperature, power against its cap, fan speed, and which
-  queue jobs run on it (Linux with the amdgpu driver; elsewhere the panel says the readings aren't available).
-- **Jobs:** running jobs, then waiting jobs in the order they will start (`waiting #1` is next), with load, GPU,
-  elapsed time, exit code and a running job's last output line. **Show finished** adds the last 15 finished jobs (the
-  window remembers the choice); **Clear finished** deletes them, as `se2mod queue clear` does.
-- **Controls:** start or stop a live Blender session, pause or resume the queue, move the selected waiting job to the top, up, down or to the bottom
-  (Ctrl+Home, Ctrl+Up, Ctrl+Down, Ctrl+End), and cancel the selected job (Delete; a running one asks first).
-- **Log:** the selected job's output, following it as it grows.
-
-The window works on the queue folder like the command line does, so it can stay open while tools submit and wait.
 
 ## Storage
 

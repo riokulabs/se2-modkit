@@ -41,7 +41,6 @@ that hold several mods.
 | `publish` | no extra packages (Pillow is used for thumbnails when installed); the extra only names the feature, so mods pin `se2-modkit[publish]` | `se2publish`, `se2mod publish` ([publish.md](publish.md)) |
 | `diag` | no extra packages | `se2diag` ([diag.md](diag.md)) |
 | `preview` | Pillow | `se2mod preview`, `se2mod sheet`, `se2mod pair` |
-| `gui` | PySide6-Essentials | `se2mod queue gui` ([render-queue.md](render-queue.md)) |
 | `mcp` | mcp (2.x) | `se2mod mcp`, the MCP server for agents ([mcp.md](mcp.md)) |
 | `dev` | pytest, pytest-xdist, ruff, Pillow, mcp | working on modkit |
 
