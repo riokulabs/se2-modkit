@@ -211,11 +211,14 @@ def distance_thumbs(folder: Path, dist: dict) -> list[dict]:
         s = math.sqrt(max(tw, 1) * max(th, 1) / (rw * rh))
         view, screen = crop, tw > SCREEN[0] or th > SCREEN[1]
         if screen:   # the block overflows the screen: keep only the part a player sees, centered on the block
-            cx, cy = (x0 + x1) / 2 - crop_x0, (y0 + y1) / 2 - crop_y0
-            ww, wh = min(crop.width, SCREEN[0] / s), min(crop.height, SCREEN[1] / s)
-            l = min(max(0.0, cx - ww / 2), crop.width - ww)
-            u = min(max(0.0, cy - wh / 2), crop.height - wh)
-            view = crop.crop((round(l), round(u), round(l + ww), round(u + wh)))
+            # the window is what the player's screen shows, so it comes out of the
+            # whole shot: clamping it to the block's tight crop would cut it down to
+            # a non-screen-shaped sliver whenever only one axis overflows
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            ww, wh = min(src.width, SCREEN[0] / s), min(src.height, SCREEN[1] / s)
+            l = min(max(0.0, cx - ww / 2), src.width - ww)
+            u = min(max(0.0, cy - wh / 2), src.height - wh)
+            view = src.crop((round(l), round(u), min(src.width, round(l + ww)), min(src.height, round(u + wh))))
         size = (max(1, round(view.width * s)), max(1, round(view.height * s)))
         if screen:   # the window was rounded to whole source pixels; never draw past the screen
             size = (min(size[0], SCREEN[0]), min(size[1], SCREEN[1]))
